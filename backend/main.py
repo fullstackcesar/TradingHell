@@ -16,6 +16,10 @@ load_dotenv()
 
 # Importar módulos locales
 from data.providers import get_market_data, get_ticker_info, search_symbols, normalize_symbol
+from data.binance_provider import (
+    get_binance_provider, normalize_binance_symbol, BinanceProvider,
+    BinanceWebSocket, parse_kline_data, parse_ticker_data
+)
 from analysis.technical import full_analysis, Signal
 from rag.rag_engine import get_rag_engine, TradingRAG
 
@@ -380,6 +384,250 @@ async def smart_analysis(
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ============== Binance Endpoints (Real-time) ==============
+
+@app.get("/api/binance/ping")
+async def binance_ping():
+    """Test de conectividad con Binance."""
+    provider = await get_binance_provider()
+    is_connected = await provider.ping()
+    return {"connected": is_connected}
+
+
+@app.get("/api/binance/price/{symbol}")
+async def binance_price(symbol: str):
+    """
+    Obtiene el precio actual de un par de Binance.
+    
+    Ejemplos: BTCUSDT, ETHUSDT, etc.
+    """
+    provider = await get_binance_provider()
+    normalized = normalize_binance_symbol(symbol)
+    
+    try:
+        price = await provider.get_ticker_price(normalized)
+        return price
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/binance/prices")
+async def binance_all_prices():
+    """Obtiene todos los precios de Binance."""
+    provider = await get_binance_provider()
+    return await provider.get_ticker_price()
+
+
+@app.get("/api/binance/ticker/{symbol}")
+async def binance_ticker(symbol: str):
+    """
+    Obtiene estadísticas 24h de un par.
+    
+    Incluye: cambio de precio, volumen, high, low, etc.
+    """
+    provider = await get_binance_provider()
+    normalized = normalize_binance_symbol(symbol)
+    
+    try:
+        ticker = await provider.get_ticker_24h(normalized)
+        return ticker
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/binance/klines/{symbol}")
+async def binance_klines(
+    symbol: str,
+    interval: str = Query(default="1h", description="Intervalo: 1m, 5m, 15m, 30m, 1h, 4h, 1d"),
+    limit: int = Query(default=100, le=1000, description="Número de velas (máx 1000)")
+):
+    """
+    Obtiene datos de velas (candlesticks) de Binance.
+    
+    Para análisis técnico y gráficos.
+    """
+    provider = await get_binance_provider()
+    normalized = normalize_binance_symbol(symbol)
+    
+    try:
+        df = await provider.get_klines(normalized, interval=interval, limit=limit)
+        
+        # Convertir a formato JSON amigable
+        data = []
+        for idx, row in df.iterrows():
+            data.append({
+                "time": int(idx.timestamp()),
+                "open": row["Open"],
+                "high": row["High"],
+                "low": row["Low"],
+                "close": row["Close"],
+                "volume": row["Volume"]
+            })
+        
+        return {
+            "symbol": normalized,
+            "interval": interval,
+            "data": data
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/binance/orderbook/{symbol}")
+async def binance_orderbook(
+    symbol: str,
+    limit: int = Query(default=20, description="Niveles del order book (5, 10, 20, 50, 100)")
+):
+    """
+    Obtiene el libro de órdenes (depth).
+    
+    Muestra las órdenes de compra y venta pendientes.
+    """
+    provider = await get_binance_provider()
+    normalized = normalize_binance_symbol(symbol)
+    
+    try:
+        orderbook = await provider.get_order_book(normalized, limit=limit)
+        return {
+            "symbol": normalized,
+            "bids": orderbook.get("bids", [])[:limit],
+            "asks": orderbook.get("asks", [])[:limit],
+            "lastUpdateId": orderbook.get("lastUpdateId")
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/binance/trades/{symbol}")
+async def binance_trades(
+    symbol: str,
+    limit: int = Query(default=50, le=1000, description="Número de trades")
+):
+    """
+    Obtiene los trades recientes.
+    """
+    provider = await get_binance_provider()
+    normalized = normalize_binance_symbol(symbol)
+    
+    try:
+        trades = await provider.get_recent_trades(normalized, limit=limit)
+        return {
+            "symbol": normalized,
+            "trades": trades
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/binance/book-ticker/{symbol}")
+async def binance_book_ticker(symbol: str):
+    """
+    Obtiene el mejor bid/ask actual.
+    
+    Precio más bajo de venta y más alto de compra.
+    """
+    provider = await get_binance_provider()
+    normalized = normalize_binance_symbol(symbol)
+    
+    try:
+        ticker = await provider.get_book_ticker(normalized)
+        return ticker
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/binance/symbols")
+async def binance_symbols():
+    """
+    Lista todos los pares de trading disponibles en Binance.
+    """
+    provider = await get_binance_provider()
+    
+    try:
+        info = await provider.get_exchange_info()
+        symbols = [
+            {
+                "symbol": s["symbol"],
+                "baseAsset": s["baseAsset"],
+                "quoteAsset": s["quoteAsset"],
+                "status": s["status"]
+            }
+            for s in info.get("symbols", [])
+            if s["status"] == "TRADING"
+        ]
+        return {"symbols": symbols, "total": len(symbols)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/binance/analyze/{symbol}")
+async def binance_analyze(
+    symbol: str,
+    interval: str = Query(default="1h", description="Intervalo para análisis"),
+    limit: int = Query(default=200, description="Velas para análisis")
+):
+    """
+    Análisis técnico completo usando datos de Binance.
+    """
+    provider = await get_binance_provider()
+    normalized = normalize_binance_symbol(symbol)
+    
+    try:
+        # Obtener datos de velas
+        df = await provider.get_klines(normalized, interval=interval, limit=limit)
+        
+        if df.empty:
+            raise HTTPException(status_code=404, detail="No hay datos disponibles")
+        
+        # Realizar análisis técnico
+        analysis = full_analysis(df, normalized)
+        
+        # Obtener precio actual
+        price_data = await provider.get_ticker_price(normalized)
+        current_price = float(price_data.get("price", 0))
+        
+        # Obtener ticker 24h para más contexto
+        ticker_24h = await provider.get_ticker_24h(normalized)
+        
+        return {
+            "symbol": normalized,
+            "current_price": current_price,
+            "price_change_24h": float(ticker_24h.get("priceChange", 0)),
+            "price_change_percent_24h": float(ticker_24h.get("priceChangePercent", 0)),
+            "high_24h": float(ticker_24h.get("highPrice", 0)),
+            "low_24h": float(ticker_24h.get("lowPrice", 0)),
+            "volume_24h": float(ticker_24h.get("volume", 0)),
+            "trend": analysis.trend,
+            "trend_strength": analysis.trend_strength,
+            "overall_signal": analysis.overall_signal.value,
+            "signal_strength": analysis.signal_strength,
+            "support_levels": analysis.support_levels,
+            "resistance_levels": analysis.resistance_levels,
+            "indicators": [
+                {"name": i.name, "value": i.value, "signal": i.signal.value}
+                for i in analysis.indicators
+            ],
+            "patterns": [
+                {"name": p.name, "signal": p.signal.value, "confidence": p.confidence, "description": p.description}
+                for p in analysis.patterns
+            ],
+            "recommendations": analysis.recommendations,
+            "summary": analysis.summary
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# Eventos de ciclo de vida
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cierra conexiones al apagar el servidor."""
+    provider = await get_binance_provider()
+    await provider.close()
 
 
 # ============== Main ==============
