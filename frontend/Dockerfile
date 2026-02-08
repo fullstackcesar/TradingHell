@@ -19,10 +19,10 @@ RUN npm run build
 FROM nginx:alpine AS production
 
 # Copiar configuración de nginx
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copiar archivos de build
-COPY --from=build /app/dist/trading-hell-frontend/browser /usr/share/nginx/html
+COPY --from=build /app/dist/trading-hell/browser /usr/share/nginx/html
 
 # Crear script de entrypoint para inyectar variables de entorno
 RUN echo '#!/bin/sh' > /docker-entrypoint.d/40-inject-env.sh && \
