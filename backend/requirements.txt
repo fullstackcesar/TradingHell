@@ -14,7 +14,7 @@ pandas==2.2.0
 numpy==1.26.3
 
 # Technical analysis
-pandas-ta==0.3.14b0
+pandas-ta==0.4.71b0
 
 # RAG (Retrieval Augmented Generation)
 langchain==0.1.5
