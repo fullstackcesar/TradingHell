@@ -3,7 +3,8 @@
  * Usa Angular 21 Signals y Resource API
  */
 
-import { Injectable, signal, computed, resource, ResourceRef } from '@angular/core';
+import { Injectable, signal, computed, resource, ResourceRef, inject } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
 import { 
   AnalysisResponse, 
   ChartDataResponse, 
@@ -11,7 +12,23 @@ import {
   TickerInfo
 } from '../models/trading.models';
 
-const API_BASE = 'http://localhost:8000/api';
+// URL base del API - se puede sobrescribir en runtime via window.__API_URL__
+declare global {
+  interface Window {
+    __API_URL__?: string;
+  }
+}
+
+function getApiBase(): string {
+  // Prioridad: window.__API_URL__ > default
+  if (typeof window !== 'undefined' && window.__API_URL__) {
+    return window.__API_URL__;
+  }
+  // Default: localhost para desarrollo, /api para producción (proxy)
+  return 'http://localhost:8000/api';
+}
+
+const API_BASE = getApiBase();
 
 @Injectable({
   providedIn: 'root'
