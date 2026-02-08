@@ -7,7 +7,8 @@ Documentación: https://developers.binance.com/docs/binance-spot-api-docs/rest-a
 import httpx
 import asyncio
 import json
-from typing import Optional, Dict, List, Callable, Any
+import websockets
+from typing import Optional, Dict, List, Callable, Any, AsyncGenerator
 from datetime import datetime
 from enum import Enum
 import pandas as pd
@@ -16,6 +17,7 @@ import pandas as pd
 # Base URLs de Binance
 BINANCE_REST_URL = "https://api.binance.com"
 BINANCE_WS_URL = "wss://stream.binance.com:9443/ws"
+BINANCE_WS_COMBINED_URL = "wss://stream.binance.com:9443/stream"
 
 
 class BinanceInterval(Enum):
@@ -443,3 +445,225 @@ async def get_binance_provider() -> BinanceProvider:
     if _binance_provider is None:
         _binance_provider = BinanceProvider()
     return _binance_provider
+
+
+# ============== WebSocket Client ==============
+
+class BinanceWSClient:
+    """Cliente WebSocket para streaming de datos de Binance."""
+    
+    def __init__(self):
+        self.ws = None
+        self.running = False
+    
+    async def connect_stream(self, stream: str) -> AsyncGenerator[Dict, None]:
+        """
+        Conecta a un stream de Binance y yield los mensajes.
+        
+        Args:
+            stream: Nombre del stream (ej: btcusdt@trade, btcusdt@kline_1m)
+        
+        Yields:
+            Diccionarios con los datos del stream
+        """
+        url = f"{BINANCE_WS_URL}/{stream}"
+        
+        try:
+            async with websockets.connect(url) as ws:
+                self.ws = ws
+                self.running = True
+                
+                while self.running:
+                    try:
+                        message = await asyncio.wait_for(ws.recv(), timeout=30.0)
+                        data = json.loads(message)
+                        yield data
+                    except asyncio.TimeoutError:
+                        # Enviar ping para mantener conexión viva
+                        await ws.ping()
+                    except websockets.ConnectionClosed:
+                        break
+        except Exception as e:
+            print(f"WebSocket error: {e}")
+        finally:
+            self.running = False
+            self.ws = None
+    
+    async def connect_combined_streams(self, streams: List[str]) -> AsyncGenerator[Dict, None]:
+        """
+        Conecta a múltiples streams combinados.
+        
+        Args:
+            streams: Lista de streams (ej: ["btcusdt@trade", "ethusdt@trade"])
+        
+        Yields:
+            Diccionarios con los datos, incluye "stream" para identificar origen
+        """
+        streams_param = "/".join(streams)
+        url = f"{BINANCE_WS_COMBINED_URL}?streams={streams_param}"
+        
+        try:
+            async with websockets.connect(url) as ws:
+                self.ws = ws
+                self.running = True
+                
+                while self.running:
+                    try:
+                        message = await asyncio.wait_for(ws.recv(), timeout=30.0)
+                        data = json.loads(message)
+                        yield data
+                    except asyncio.TimeoutError:
+                        await ws.ping()
+                    except websockets.ConnectionClosed:
+                        break
+        except Exception as e:
+            print(f"WebSocket error: {e}")
+        finally:
+            self.running = False
+            self.ws = None
+    
+    def stop(self):
+        """Detiene el streaming."""
+        self.running = False
+
+
+async def stream_price(symbol: str) -> AsyncGenerator[Dict, None]:
+    """
+    Stream de precio en tiempo real para un símbolo.
+    
+    Args:
+        symbol: Par de trading (ej: BTCUSDT)
+    
+    Yields:
+        {"symbol": "BTCUSDT", "price": 50000.00, "time": 1234567890}
+    """
+    stream = f"{symbol.lower()}@trade"
+    client = BinanceWSClient()
+    
+    async for data in client.connect_stream(stream):
+        yield {
+            "type": "trade",
+            "symbol": data.get("s"),
+            "price": float(data.get("p", 0)),
+            "quantity": float(data.get("q", 0)),
+            "time": data.get("T"),
+            "is_buyer_maker": data.get("m")
+        }
+
+
+async def stream_kline(symbol: str, interval: str = "1m") -> AsyncGenerator[Dict, None]:
+    """
+    Stream de velas en tiempo real.
+    
+    Args:
+        symbol: Par de trading
+        interval: Intervalo (1m, 5m, 15m, etc.)
+    
+    Yields:
+        Datos de vela actualizados en tiempo real
+    """
+    stream = f"{symbol.lower()}@kline_{interval}"
+    client = BinanceWSClient()
+    
+    async for data in client.connect_stream(stream):
+        k = data.get("k", {})
+        yield {
+            "type": "kline",
+            "symbol": k.get("s"),
+            "interval": k.get("i"),
+            "open_time": k.get("t"),
+            "close_time": k.get("T"),
+            "open": float(k.get("o", 0)),
+            "high": float(k.get("h", 0)),
+            "low": float(k.get("l", 0)),
+            "close": float(k.get("c", 0)),
+            "volume": float(k.get("v", 0)),
+            "trades": k.get("n"),
+            "is_closed": k.get("x", False)
+        }
+
+
+async def stream_ticker(symbol: str) -> AsyncGenerator[Dict, None]:
+    """
+    Stream de ticker 24h actualizado.
+    
+    Args:
+        symbol: Par de trading
+    
+    Yields:
+        Estadísticas 24h actualizadas
+    """
+    stream = f"{symbol.lower()}@ticker"
+    client = BinanceWSClient()
+    
+    async for data in client.connect_stream(stream):
+        yield {
+            "type": "ticker",
+            "symbol": data.get("s"),
+            "price_change": float(data.get("p", 0)),
+            "price_change_percent": float(data.get("P", 0)),
+            "last_price": float(data.get("c", 0)),
+            "open_price": float(data.get("o", 0)),
+            "high_price": float(data.get("h", 0)),
+            "low_price": float(data.get("l", 0)),
+            "volume": float(data.get("v", 0)),
+            "quote_volume": float(data.get("q", 0)),
+            "trades": data.get("n")
+        }
+
+
+async def stream_mini_ticker(symbol: str) -> AsyncGenerator[Dict, None]:
+    """
+    Stream de mini ticker (menos datos, más ligero).
+    """
+    stream = f"{symbol.lower()}@miniTicker"
+    client = BinanceWSClient()
+    
+    async for data in client.connect_stream(stream):
+        yield {
+            "type": "miniTicker",
+            "symbol": data.get("s"),
+            "close": float(data.get("c", 0)),
+            "open": float(data.get("o", 0)),
+            "high": float(data.get("h", 0)),
+            "low": float(data.get("l", 0)),
+            "volume": float(data.get("v", 0)),
+            "quote_volume": float(data.get("q", 0))
+        }
+
+
+async def stream_book_ticker(symbol: str) -> AsyncGenerator[Dict, None]:
+    """
+    Stream del mejor bid/ask (muy rápido, ideal para trading).
+    """
+    stream = f"{symbol.lower()}@bookTicker"
+    client = BinanceWSClient()
+    
+    async for data in client.connect_stream(stream):
+        yield {
+            "type": "bookTicker",
+            "symbol": data.get("s"),
+            "bid_price": float(data.get("b", 0)),
+            "bid_qty": float(data.get("B", 0)),
+            "ask_price": float(data.get("a", 0)),
+            "ask_qty": float(data.get("A", 0))
+        }
+
+
+async def stream_depth(symbol: str, levels: int = 10) -> AsyncGenerator[Dict, None]:
+    """
+    Stream del order book (depth).
+    
+    Args:
+        symbol: Par de trading
+        levels: Niveles de profundidad (5, 10, 20)
+    """
+    stream = f"{symbol.lower()}@depth{levels}@100ms"
+    client = BinanceWSClient()
+    
+    async for data in client.connect_stream(stream):
+        yield {
+            "type": "depth",
+            "bids": [[float(p), float(q)] for p, q in data.get("bids", [])],
+            "asks": [[float(p), float(q)] for p, q in data.get("asks", [])]
+        }

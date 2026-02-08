@@ -1,28 +1,21 @@
 """
-RAG Engine para el asistente de trading.
-Carga la base de conocimiento y responde preguntas en lenguaje natural.
+RAG Engine simplificado para el asistente de trading.
+Usa OpenAI directamente con la base de conocimiento como contexto.
+Sin dependencias pesadas (langchain, chromadb, sentence-transformers, etc.)
 """
 
 import os
 from pathlib import Path
 from typing import List, Optional
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import DirectoryLoader, TextLoader
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
-from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
-from langchain_community.llms import Ollama
-from langchain_openai import ChatOpenAI
+from openai import OpenAI
 
 
 class TradingRAG:
-    """Motor RAG especializado en trading."""
+    """Motor RAG simplificado usando solo OpenAI."""
     
     def __init__(
         self,
         knowledge_base_path: str = None,
-        use_openai: bool = True,
         openai_api_key: str = None,
         model_name: str = "gpt-4o-mini"
     ):
@@ -30,150 +23,90 @@ class TradingRAG:
         Inicializa el motor RAG.
         
         Args:
-            knowledge_base_path: Ruta a la carpeta con los documentos de conocimiento
-            use_openai: Si True, usa OpenAI. Si False, usa Ollama local
-            openai_api_key: API key de OpenAI (opcional si está en env)
-            model_name: Nombre del modelo a usar
+            knowledge_base_path: Ruta a la carpeta con los documentos
+            openai_api_key: API key de OpenAI
+            model_name: Modelo a usar (gpt-4o-mini es barato y bueno)
         """
         if knowledge_base_path is None:
             knowledge_base_path = Path(__file__).parent / "knowledge_base"
         
         self.knowledge_base_path = Path(knowledge_base_path)
-        self.use_openai = use_openai
         self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
         self.model_name = model_name
         
-        # Inicializar embeddings (gratuito, local)
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-            model_kwargs={'device': 'cpu'}
-        )
-        
-        # Inicializar vector store
-        self.vector_store = None
-        self.qa_chain = None
+        # Inicializar cliente OpenAI
+        self.client = OpenAI(api_key=self.openai_api_key)
         
         # Cargar conocimiento
-        self._load_knowledge_base()
-        self._setup_qa_chain()
+        self.knowledge = self._load_knowledge_base()
+        print(f"✅ RAG inicializado con {len(self.knowledge)} caracteres de conocimiento")
     
-    def _load_knowledge_base(self):
-        """Carga y procesa los documentos de la base de conocimiento."""
+    def _load_knowledge_base(self) -> str:
+        """Carga todos los documentos markdown como texto."""
         print(f"📚 Cargando base de conocimiento desde: {self.knowledge_base_path}")
         
-        # Cargar todos los archivos markdown
-        loader = DirectoryLoader(
-            str(self.knowledge_base_path),
-            glob="**/*.md",
-            loader_cls=TextLoader,
-            loader_kwargs={'encoding': 'utf-8'}
-        )
-        documents = loader.load()
+        all_content = []
+        md_files = list(self.knowledge_base_path.glob("**/*.md"))
         
-        print(f"📄 Documentos cargados: {len(documents)}")
+        for md_file in md_files:
+            try:
+                content = md_file.read_text(encoding='utf-8')
+                all_content.append(f"## Tema: {md_file.stem}\n\n{content}")
+                print(f"  📄 Cargado: {md_file.name}")
+            except Exception as e:
+                print(f"  ⚠️ Error cargando {md_file.name}: {e}")
         
-        # Dividir en chunks para mejor búsqueda
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
-            separators=["\n## ", "\n### ", "\n\n", "\n", " "]
-        )
-        splits = text_splitter.split_documents(documents)
-        
-        print(f"✂️ Chunks creados: {len(splits)}")
-        
-        # Crear vector store
-        persist_directory = self.knowledge_base_path.parent / "chroma_db"
-        self.vector_store = Chroma.from_documents(
-            documents=splits,
-            embedding=self.embeddings,
-            persist_directory=str(persist_directory)
-        )
-        
-        print("✅ Base de conocimiento cargada correctamente")
-    
-    def _setup_qa_chain(self):
-        """Configura la cadena de preguntas y respuestas."""
-        
-        # Prompt personalizado para trading
-        prompt_template = """Eres un asistente experto en trading que ayuda a principiantes a entender el análisis técnico.
-Tu trabajo es explicar conceptos de forma simple, clara y práctica.
-
-Usa la siguiente información de la base de conocimiento para responder:
-
-{context}
-
-Reglas para responder:
-1. Explica como si hablaras con alguien que nunca ha hecho trading
-2. Usa ejemplos concretos cuando sea posible
-3. Si hay señales de compra/venta, explica claramente QUÉ hacer y POR QUÉ
-4. Advierte siempre de los riesgos
-5. Responde en español
-6. Sé conciso pero completo
-7. Usa emojis para hacer la respuesta más visual (📈 📉 ⚠️ ✅ ❌)
-
-Pregunta: {question}
-
-Respuesta útil:"""
-
-        PROMPT = PromptTemplate(
-            template=prompt_template,
-            input_variables=["context", "question"]
-        )
-        
-        # Configurar LLM
-        if self.use_openai and self.openai_api_key:
-            llm = ChatOpenAI(
-                model_name=self.model_name,
-                temperature=0.3,
-                openai_api_key=self.openai_api_key
-            )
-        else:
-            # Usar Ollama local (gratuito)
-            llm = Ollama(
-                model="llama2",
-                temperature=0.3
-            )
-        
-        # Crear cadena QA
-        self.qa_chain = RetrievalQA.from_chain_type(
-            llm=llm,
-            chain_type="stuff",
-            retriever=self.vector_store.as_retriever(
-                search_type="similarity",
-                search_kwargs={"k": 4}
-            ),
-            chain_type_kwargs={"prompt": PROMPT},
-            return_source_documents=True
-        )
+        return "\n\n---\n\n".join(all_content)
     
     def ask(self, question: str) -> dict:
         """
-        Hace una pregunta al sistema RAG.
+        Responde una pregunta usando la base de conocimiento.
         
         Args:
-            question: La pregunta en lenguaje natural
+            question: Pregunta del usuario
             
         Returns:
             dict con 'answer' y 'sources'
         """
-        if not self.qa_chain:
-            return {"answer": "Error: El sistema no está inicializado", "sources": []}
-        
+        system_prompt = f"""Eres un experto en trading que ayuda a principiantes a entender el análisis técnico.
+Tu trabajo es explicar conceptos de forma simple, clara y práctica.
+
+REGLAS:
+1. Responde SOLO basándote en la información proporcionada
+2. Si no sabes algo, dilo honestamente
+3. Usa ejemplos prácticos cuando sea posible
+4. Responde en español
+5. Sé conciso pero completo
+6. Usa emojis para hacer la respuesta más visual (📈 📉 ⚠️ ✅ ❌)
+
+BASE DE CONOCIMIENTO:
+{self.knowledge}
+"""
+
         try:
-            result = self.qa_chain.invoke({"query": question})
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": question}
+                ],
+                temperature=0.7,
+                max_tokens=1000
+            )
             
-            # Extraer fuentes
+            answer = response.choices[0].message.content
+            
+            # Identificar qué documentos se usaron
             sources = []
-            if "source_documents" in result:
-                for doc in result["source_documents"]:
-                    source = doc.metadata.get("source", "Desconocido")
-                    sources.append(Path(source).name)
+            for md_file in self.knowledge_base_path.glob("**/*.md"):
+                if md_file.stem.lower() in question.lower() or md_file.stem.lower() in answer.lower():
+                    sources.append(md_file.name)
             
             return {
-                "answer": result["result"],
-                "sources": list(set(sources))  # Eliminar duplicados
+                "answer": answer,
+                "sources": sources[:3]
             }
+            
         except Exception as e:
             return {
                 "answer": f"Error al procesar la pregunta: {str(e)}",
@@ -182,24 +115,27 @@ Respuesta útil:"""
     
     def get_relevant_context(self, query: str, k: int = 4) -> List[str]:
         """
-        Obtiene contexto relevante sin generar respuesta.
-        Útil para combinar con análisis técnico.
-        
-        Args:
-            query: Texto de búsqueda
-            k: Número de documentos a retornar
-            
-        Returns:
-            Lista de textos relevantes
+        Busca contexto relevante en la base de conocimiento.
+        Método simplificado por compatibilidad.
         """
-        if not self.vector_store:
-            return []
+        # Búsqueda simple por palabras clave
+        results = []
+        query_words = query.lower().split()
         
-        docs = self.vector_store.similarity_search(query, k=k)
-        return [doc.page_content for doc in docs]
+        for md_file in self.knowledge_base_path.glob("**/*.md"):
+            try:
+                content = md_file.read_text(encoding='utf-8')
+                score = sum(1 for word in query_words if word in content.lower())
+                if score > 0:
+                    results.append((score, content[:500]))
+            except:
+                pass
+        
+        results.sort(reverse=True, key=lambda x: x[0])
+        return [r[1] for r in results[:k]]
 
 
-# Singleton para reusar el motor
+# Singleton para reutilizar la instancia
 _rag_instance: Optional[TradingRAG] = None
 
 

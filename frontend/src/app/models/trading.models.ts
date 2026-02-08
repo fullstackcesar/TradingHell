@@ -111,11 +111,24 @@ export const POPULAR_SYMBOLS = [
 ];
 
 export const TIMEFRAMES = [
-  { value: '1h', label: '1 Hora' },
-  { value: '4h', label: '4 Horas' },
-  { value: '1d', label: '1 Día' },
-  { value: '1wk', label: '1 Semana' },
-  { value: '1mo', label: '1 Mes' },
+  // Minutos
+  { value: '1m', label: '1m' },
+  { value: '3m', label: '3m' },
+  { value: '5m', label: '5m' },
+  { value: '15m', label: '15m' },
+  { value: '30m', label: '30m' },
+  // Horas
+  { value: '1h', label: '1H' },
+  { value: '2h', label: '2H' },
+  { value: '4h', label: '4H' },
+  { value: '6h', label: '6H' },
+  { value: '8h', label: '8H' },
+  { value: '12h', label: '12H' },
+  // Días/Semanas/Mes
+  { value: '1d', label: '1D' },
+  { value: '3d', label: '3D' },
+  { value: '1w', label: '1S' },
+  { value: '1M', label: '1M' },
 ];
 
 export const PERIODS = [
@@ -124,4 +137,6 @@ export const PERIODS = [
   { value: '6mo', label: '6 Meses' },
   { value: '1y', label: '1 Año' },
   { value: '2y', label: '2 Años' },
+  { value: '5y', label: '5 Años' },
+  { value: 'max', label: 'Máximo' },
 ];

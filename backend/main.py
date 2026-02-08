@@ -4,12 +4,14 @@ FastAPI backend para análisis técnico y asistente RAG de trading.
 """
 
 import os
+import asyncio
 from typing import Optional, List
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import uvicorn
+import json
 
 # Cargar variables de entorno
 load_dotenv()
@@ -18,7 +20,8 @@ load_dotenv()
 from data.providers import get_market_data, get_ticker_info, search_symbols, normalize_symbol
 from data.binance_provider import (
     get_binance_provider, normalize_binance_symbol, BinanceProvider,
-    BinanceWebSocket, parse_kline_data, parse_ticker_data
+    stream_price, stream_kline, stream_ticker, stream_mini_ticker,
+    stream_book_ticker, stream_depth, BinanceWSClient
 )
 from analysis.technical import full_analysis, Signal
 from rag.rag_engine import get_rag_engine, TradingRAG
@@ -134,6 +137,7 @@ rag_engine: Optional[TradingRAG] = None
 async def startup_event():
     """Inicializar el motor RAG al arrancar."""
     global rag_engine
+    
     try:
         openai_key = os.getenv("OPENAI_API_KEY")
         if openai_key:
@@ -141,11 +145,12 @@ async def startup_event():
             rag_engine = get_rag_engine(openai_api_key=openai_key)
             print("✅ Motor RAG inicializado correctamente")
         else:
-            print("⚠️ OPENAI_API_KEY no configurada. El RAG funcionará con Ollama local.")
-            print("   Para usar OpenAI, crea un archivo .env con OPENAI_API_KEY=tu_clave")
+            print("⚠️ OPENAI_API_KEY no configurada.")
+            print("   El chat no funcionará sin API key de OpenAI.")
+            print("   Crea un archivo .env con: OPENAI_API_KEY=tu_clave")
     except Exception as e:
         print(f"⚠️ Error inicializando RAG: {e}")
-        print("   El análisis técnico funcionará, pero las preguntas no.")
+        print("   El análisis técnico funcionará, pero el chat no.")
 
 
 @app.get("/")
@@ -637,8 +642,8 @@ if __name__ == "__main__":
     ╔════════════════════════════════════════╗
     ║     🔥 TradingHell Backend API 🔥      ║
     ╠════════════════════════════════════════╣
-    ║  Documentación: http://localhost:8000/docs
-    ║  Health check:  http://localhost:8000/health
+    ║  Documentación: http://localhost:8001/docs
+    ║  Health check:  http://localhost:8001/health
     ╚════════════════════════════════════════╝
     """)
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

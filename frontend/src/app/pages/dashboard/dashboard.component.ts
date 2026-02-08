@@ -1,240 +1,225 @@
 /**
- * Dashboard Component - Página principal con todos los widgets
+ * Dashboard Component - Página principal con layout optimizado
  */
 
-import { Component, inject, signal, computed } from '@angular/core';
+import { Component, inject, signal, computed, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { DecimalPipe } from '@angular/common';
 import { TradingService } from '../../services/trading.service';
 import { ChartComponent } from '../../components/chart/chart.component';
 import { AnalysisComponent } from '../../components/analysis/analysis.component';
 import { ChatComponent } from '../../components/chat/chat.component';
-import { POPULAR_SYMBOLS, TIMEFRAMES, PERIODS } from '../../models/trading.models';
+import { ActionPanelComponent } from '../../components/action-panel/action-panel.component';
+import { MarketExplorerComponent } from '../../components/market-explorer/market-explorer.component';
+import { PositionTrackerComponent, NewPositionData } from '../../components/position-tracker/position-tracker.component';
+import { TIMEFRAMES, PERIODS } from '../../models/trading.models';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [FormsModule, DecimalPipe, ChartComponent, AnalysisComponent, ChatComponent],
+  imports: [FormsModule, ChartComponent, AnalysisComponent, ChatComponent, ActionPanelComponent, MarketExplorerComponent, PositionTrackerComponent],
   template: `
-    <div class="min-h-screen p-4 lg:p-6">
-      <!-- Header -->
-      <header class="mb-6">
-        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <!-- Logo y título -->
-          <div>
-            <h1 class="text-2xl lg:text-3xl font-bold flex items-center gap-3">
-              🔥 TradingHell
-            </h1>
-            <p class="text-gray-400 text-sm mt-1">
-              Tu asistente inteligente de trading
-            </p>
-          </div>
-          
-          <!-- Controles -->
-          <div class="flex flex-wrap items-center gap-3">
-            <!-- Selector de símbolo -->
-            <div class="flex items-center gap-2">
-              <input
-                type="text"
-                [(ngModel)]="symbolInput"
-                (keydown.enter)="changeSymbol()"
-                placeholder="Símbolo..."
-                class="w-32 px-3 py-2 rounded-lg bg-trading-card border border-trading-border 
-                       focus:border-indigo-500 focus:outline-none text-sm"
-              />
-              <button
-                (click)="changeSymbol()"
-                class="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm transition">
-                Buscar
-              </button>
+    <div class="h-screen flex flex-col overflow-hidden bg-trading-bg relative">
+      <!-- Barra de progreso de carga (solo cuando NO es tiempo real) -->
+      @if (tradingService.loadingStep() !== 'idle' && !isRealTime()) {
+        <div class="absolute top-0 left-0 right-0 z-50">
+          <div class="h-1 bg-trading-card overflow-hidden">
+            <div 
+              class="h-full transition-all duration-300 ease-out"
+              [class]="tradingService.loadingStep() === 'done' ? 'bg-green-500' : 'bg-indigo-500'"
+              [style.width.%]="tradingService.loadingProgress()">
             </div>
-            
-            <!-- Selector de timeframe -->
-            <select
-              [(ngModel)]="selectedTimeframe"
-              (ngModelChange)="changeTimeframe($event)"
-              class="px-3 py-2 rounded-lg bg-trading-card border border-trading-border 
-                     focus:border-indigo-500 focus:outline-none text-sm cursor-pointer">
-              @for (tf of timeframes; track tf.value) {
-                <option [value]="tf.value">{{ tf.label }}</option>
-              }
-            </select>
-            
-            <!-- Selector de período -->
-            <select
-              [(ngModel)]="selectedPeriod"
-              (ngModelChange)="changePeriod($event)"
-              class="px-3 py-2 rounded-lg bg-trading-card border border-trading-border 
-                     focus:border-indigo-500 focus:outline-none text-sm cursor-pointer">
-              @for (p of periods; track p.value) {
-                <option [value]="p.value">{{ p.label }}</option>
-              }
-            </select>
-            
-            <!-- Botón refresh -->
-            <button
-              (click)="refresh()"
-              [disabled]="tradingService.isLoading()"
-              class="p-2 rounded-lg bg-trading-card border border-trading-border 
-                     hover:border-indigo-500 transition disabled:opacity-50"
-              title="Actualizar">
-              🔄
-            </button>
+          </div>
+          <div class="flex items-center justify-center gap-2 py-1 bg-trading-card/90 backdrop-blur-sm text-xs">
+            @if (tradingService.loadingStep() !== 'done') {
+              <span class="animate-spin">⏳</span>
+            } @else {
+              <span>✅</span>
+            }
+            <span class="font-medium">{{ tradingService.loadingMessage() }}</span>
+            <span class="text-gray-500">({{ tradingService.loadingProgress() }}%)</span>
           </div>
         </div>
+      }
+      
+      <!-- Header minimalista -->
+      <header class="flex-shrink-0 px-3 py-2 border-b border-trading-border flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <h1 class="text-lg font-bold">🔥 TradingHell</h1>
+          <span class="text-gray-500 text-xs hidden md:inline">| {{ currentSymbol() }}</span>
+        </div>
         
-        <!-- Símbolos populares -->
-        <div class="mt-4 flex flex-wrap gap-2">
-          @for (sym of popularSymbols; track sym.symbol) {
-            <button
-              (click)="selectSymbol(sym.symbol)"
-              [class]="currentSymbol() === sym.symbol 
-                ? 'bg-indigo-600 border-indigo-500' 
-                : 'bg-trading-card border-trading-border hover:border-indigo-500'"
-              class="px-3 py-1 rounded-full text-xs border transition">
-              {{ sym.symbol }}
-            </button>
-          }
+        <div class="flex items-center gap-2">
+          <input
+            type="text"
+            [(ngModel)]="symbolInput"
+            (keydown.enter)="changeSymbol()"
+            placeholder="Símbolo..."
+            class="w-24 px-2 py-1 rounded bg-trading-card border border-trading-border 
+                   focus:border-indigo-500 focus:outline-none text-xs"
+          />
+          <select
+            [(ngModel)]="selectedTimeframe"
+            (ngModelChange)="changeTimeframe($event)"
+            class="px-2 py-1 rounded bg-trading-card border border-trading-border text-xs"
+            title="Intervalo de vela">
+            @for (tf of timeframes; track tf.value) {
+              <option [value]="tf.value">{{ tf.label }}</option>
+            }
+          </select>
+          <select
+            [(ngModel)]="selectedPeriod"
+            (ngModelChange)="changePeriod($event)"
+            class="px-2 py-1 rounded bg-trading-card border border-trading-border text-xs"
+            title="Periodo de historia">
+            @for (p of periods; track p.value) {
+              <option [value]="p.value">{{ p.label }}</option>
+            }
+          </select>
+          <button
+            (click)="refresh()"
+            [disabled]="tradingService.isLoading()"
+            class="p-1 rounded bg-trading-card border border-trading-border hover:border-indigo-500 transition text-xs"
+            title="Actualizar datos">
+            🔄
+          </button>
+          
+          <!-- Botón tiempo real -->
+          <button
+            (click)="toggleRealTime()"
+            class="px-2 py-1 rounded text-xs font-bold transition-all flex items-center gap-1"
+            [class]="isRealTime() 
+              ? 'bg-green-500/20 border border-green-500 text-green-400 animate-pulse' 
+              : 'bg-trading-card border border-trading-border text-gray-400 hover:border-indigo-500'"
+            [title]="isRealTime() ? 'Desactivar tiempo real' : 'Activar actualización cada 500ms'">
+            <span>{{ isRealTime() ? '🟢' : '⚪' }}</span>
+            <span class="hidden sm:inline">{{ isRealTime() ? 'EN VIVO' : 'Tiempo Real' }}</span>
+          </button>
         </div>
       </header>
       
-      <!-- Info del símbolo actual -->
-      <div class="mb-6 trading-card">
-        <div class="flex flex-wrap items-center gap-6">
-          <div>
-            <span class="text-gray-400 text-sm">Símbolo</span>
-            <p class="text-xl font-bold">{{ currentSymbol() }}</p>
-          </div>
+      <!-- Layout principal sin scroll -->
+      <div class="flex-1 grid grid-cols-12 gap-2 p-2 min-h-0">
+        
+        <!-- Columna izquierda: Explorador + Acción -->
+        <div class="col-span-12 lg:col-span-2 flex flex-col gap-2 min-h-0 overflow-auto">
+          <app-market-explorer class="flex-shrink-0" />
+          <app-action-panel 
+            class="flex-1 min-h-0"
+            (levelHovered)="onLevelHovered($event)"
+            (openPosition)="openPositionTracker($event)"
+          />
+        </div>
+        
+        <!-- Columna central: Gráfico -->
+        <div class="col-span-12 lg:col-span-7 flex flex-col gap-2 min-h-0">
+          <app-chart 
+            class="flex-1 min-h-0"
+            [highlightedLevel]="highlightedLevel()" 
+            [patterns]="chartPatterns()"
+          />
           
-          @if (currentPrice()) {
-            <div>
-              <span class="text-gray-400 text-sm">Precio</span>
-              <p class="text-xl font-bold">{{ currentPrice() | number:'1.2-4' }}</p>
-            </div>
+          <!-- Posiciones abiertas (si hay) -->
+          @if (hasOpenPositions()) {
+            <app-position-tracker 
+              class="flex-shrink-0 max-h-32"
+              [prefillPosition]="pendingPosition()"
+              (closePosition)="onClosePosition($event)"
+              (positionAdded)="onPositionAdded()"
+            />
           }
-          
-          @if (trend()) {
-            <div>
-              <span class="text-gray-400 text-sm">Tendencia</span>
-              <p class="text-xl font-bold" [class]="trendColor()">
-                {{ trendEmoji() }} {{ trend() }}
-              </p>
-            </div>
-          }
-          
-          @if (signal()) {
-            <div>
-              <span class="text-gray-400 text-sm">Señal</span>
-              <p class="text-xl font-bold" [class]="signalColor()">
-                {{ signal() }}
-              </p>
-            </div>
-          }
+        </div>
+        
+        <!-- Columna derecha: Análisis completo -->
+        <div class="col-span-12 lg:col-span-3 flex flex-col min-h-0 overflow-auto">
+          <app-analysis class="flex-1" />
         </div>
       </div>
       
-      <!-- Grid principal -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
-        <!-- Gráfico (2 columnas) -->
-        <div class="lg:col-span-2">
-          <app-chart />
+      <!-- Barra inferior: Chat colapsable + Alertas -->
+      <div class="flex-shrink-0 border-t border-trading-border">
+        <div class="flex items-center justify-between px-3 py-1 bg-trading-card cursor-pointer"
+             (click)="toggleChat()">
+          <span class="text-xs font-medium">
+            💬 Asistente IA
+            @if (unreadAlerts() > 0) {
+              <span class="ml-2 px-1.5 py-0.5 bg-red-500 text-white rounded-full text-xs">
+                {{ unreadAlerts() }}
+              </span>
+            }
+          </span>
+          <span class="text-gray-400 text-xs">{{ isChatOpen() ? '▼' : '▶' }}</span>
         </div>
         
-        <!-- Análisis -->
-        <div class="h-[500px] lg:h-auto">
-          <app-analysis />
-        </div>
-        
-        <!-- Chat (2 columnas) -->
-        <div class="lg:col-span-2 h-[400px]">
-          <app-chat />
-        </div>
-        
-        <!-- Tips rápidos -->
-        <div class="trading-card">
-          <h3 class="text-lg font-semibold mb-4">💡 Tips Rápidos</h3>
-          <div class="space-y-3 text-sm text-gray-400">
-            <p>• Nunca arriesgues más del 1-2% por operación</p>
-            <p>• Espera siempre confirmación de los patrones</p>
-            <p>• El volumen confirma los movimientos</p>
-            <p>• RSI > 70 = sobrecompra, RSI < 30 = sobreventa</p>
-            <p>• Las divergencias son señales muy fiables</p>
+        @if (isChatOpen()) {
+          <div class="h-40 border-t border-trading-border">
+            <app-chat />
           </div>
-          
-          <div class="mt-6 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-            <p class="text-yellow-400 text-sm font-medium">⚠️ Aviso</p>
-            <p class="text-xs text-gray-400 mt-1">
-              Esto es solo análisis técnico educativo. 
-              No es consejo financiero. Opera bajo tu propio riesgo.
-            </p>
-          </div>
-        </div>
+        }
       </div>
       
-      <!-- Footer -->
-      <footer class="mt-8 text-center text-gray-500 text-sm">
-        <p>TradingHell © 2026 - Análisis técnico con IA</p>
+      <!-- Footer minimalista -->
+      <footer class="flex-shrink-0 px-3 py-1 text-center text-gray-600 text-xs border-t border-trading-border">
+        ⚠️ No es consejo financiero
       </footer>
     </div>
   `,
   styles: [`
     :host {
       display: block;
+      height: 100vh;
+      overflow: hidden;
     }
   `]
 })
-export class DashboardComponent {
+export class DashboardComponent implements OnDestroy {
   readonly tradingService = inject(TradingService);
   
-  // Estado local
   symbolInput = '';
   selectedTimeframe = '1d';
-  selectedPeriod = '6mo';
+  selectedPeriod = '3mo';
   
-  // Datos estáticos
-  readonly popularSymbols = POPULAR_SYMBOLS.slice(0, 12);
   readonly timeframes = TIMEFRAMES;
   readonly periods = PERIODS;
   
-  // Computed desde el servicio
+  // Tiempo real
+  readonly isRealTime = signal(false);
+  private realTimeInterval: ReturnType<typeof setInterval> | null = null;
+  
   readonly currentSymbol = computed(() => this.tradingService.currentSymbol());
+  readonly isChatOpen = signal(false);
+  readonly highlightedLevel = signal<{ type: string; price: number } | null>(null);
+  readonly unreadAlerts = signal(0);
   
-  readonly currentPrice = computed(() => 
-    this.tradingService.analysis.value()?.current_price
-  );
-  
-  readonly trend = computed(() => 
-    this.tradingService.analysis.value()?.trend
-  );
-  
-  readonly signal = computed(() => 
-    this.tradingService.analysis.value()?.overall_signal
-  );
-  
-  readonly trendColor = computed(() => {
-    const t = this.trend();
-    if (t === 'ALCISTA') return 'text-green-400';
-    if (t === 'BAJISTA') return 'text-red-400';
-    return 'text-yellow-400';
+  // Patrones para mostrar en el gráfico
+  readonly chartPatterns = computed(() => {
+    const analysis = this.tradingService.analysis.value();
+    return analysis?.patterns || [];
   });
   
-  readonly trendEmoji = computed(() => {
-    const t = this.trend();
-    if (t === 'ALCISTA') return '📈';
-    if (t === 'BAJISTA') return '📉';
-    return '➡️';
-  });
+  // Posiciones abiertas
+  readonly hasOpenPositions = signal(true); // Siempre mostrar para poder añadir
+  readonly pendingPosition = signal<NewPositionData | null>(null);
   
-  readonly signalColor = computed(() => {
-    const s = this.signal();
-    if (!s) return 'text-gray-400';
-    if (s.includes('COMPRA')) return 'text-green-400';
-    if (s.includes('VENTA')) return 'text-red-400';
-    return 'text-yellow-400';
-  });
+  toggleChat(): void {
+    this.isChatOpen.update(v => !v);
+  }
   
-  selectSymbol(symbol: string): void {
-    this.tradingService.setSymbol(symbol);
+  onLevelHovered(level: { type: string; price: number } | null): void {
+    this.highlightedLevel.set(level);
+  }
+  
+  openPositionTracker(data: { symbol: string; type: 'LONG' | 'SHORT'; entryPrice: number; stopLoss: number; takeProfit: number }): void {
+    this.pendingPosition.set(data);
+    this.hasOpenPositions.set(true);
+  }
+  
+  onPositionAdded(): void {
+    // Limpiar pending para evitar re-abrir el modal
+    this.pendingPosition.set(null);
+  }
+  
+  onClosePosition(id: string): void {
+    // Manejar cierre de posición
   }
   
   changeSymbol(): void {
@@ -254,5 +239,32 @@ export class DashboardComponent {
   
   refresh(): void {
     this.tradingService.refresh();
+  }
+  
+  toggleRealTime(): void {
+    const newState = !this.isRealTime();
+    this.isRealTime.set(newState);
+    this.tradingService.isRealTimeMode.set(newState);
+    
+    if (newState) {
+      // Activar auto-refresh cada 500ms
+      this.realTimeInterval = setInterval(() => {
+        if (!this.tradingService.isLoading()) {
+          this.tradingService.refresh();
+        }
+      }, 500);
+    } else {
+      // Desactivar
+      if (this.realTimeInterval) {
+        clearInterval(this.realTimeInterval);
+        this.realTimeInterval = null;
+      }
+    }
+  }
+  
+  ngOnDestroy(): void {
+    if (this.realTimeInterval) {
+      clearInterval(this.realTimeInterval);
+    }
   }
 }

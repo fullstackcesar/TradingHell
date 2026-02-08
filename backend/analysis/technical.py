@@ -315,36 +315,50 @@ def analyze_indicators(df: pd.DataFrame) -> List[IndicatorResult]:
     sma_20 = last.get('sma_20', 0)
     sma_50 = last.get('sma_50', 0)
     sma_200 = last.get('sma_200', 0)
+    ema_20 = last.get('ema_20', 0)
+    ema_50 = last.get('ema_50', 0)
     
-    if not pd.isna(sma_20) and not pd.isna(sma_50):
-        if close > sma_20 > sma_50:
-            signal = Signal.BUY
-            interp = "Precio > SMA20 > SMA50 → Tendencia alcista confirmada."
-        elif close < sma_20 < sma_50:
-            signal = Signal.SELL
-            interp = "Precio < SMA20 < SMA50 → Tendencia bajista confirmada."
-        else:
-            signal = Signal.NEUTRAL
-            interp = "Medias mezcladas → Sin tendencia clara."
-        
-        results.append(IndicatorResult("Medias Móviles", close, signal, interp))
+    # SMA 20
+    if not pd.isna(sma_20):
+        signal = Signal.BUY if close > sma_20 else Signal.SELL
+        results.append(IndicatorResult("SMA 20", sma_20, signal, f"Media Simple 20: {sma_20:.2f}"))
+    
+    # SMA 50
+    if not pd.isna(sma_50):
+        signal = Signal.BUY if close > sma_50 else Signal.SELL
+        results.append(IndicatorResult("SMA 50", sma_50, signal, f"Media Simple 50: {sma_50:.2f}"))
+    
+    # SMA 200 (importante)
+    if not pd.isna(sma_200):
+        signal = Signal.BUY if close > sma_200 else Signal.SELL
+        results.append(IndicatorResult("SMA 200", sma_200, signal, f"Media Simple 200: {sma_200:.2f}"))
+    
+    # EMA 20
+    if not pd.isna(ema_20):
+        signal = Signal.BUY if close > ema_20 else Signal.SELL
+        results.append(IndicatorResult("EMA 20", ema_20, signal, f"Media Exponencial 20: {ema_20:.2f}"))
+    
+    # EMA 50
+    if not pd.isna(ema_50):
+        signal = Signal.BUY if close > ema_50 else Signal.SELL
+        results.append(IndicatorResult("EMA 50", ema_50, signal, f"Media Exponencial 50: {ema_50:.2f}"))
     
     # Bandas de Bollinger
     bb_upper = last.get('bb_upper', 0)
+    bb_middle = last.get('bb_middle', 0)
     bb_lower = last.get('bb_lower', 0)
     
-    if not pd.isna(bb_upper) and not pd.isna(bb_lower):
-        if close >= bb_upper:
-            signal = Signal.SELL
-            interp = "Precio tocando banda superior → Posible sobrecompra."
-        elif close <= bb_lower:
-            signal = Signal.BUY
-            interp = "Precio tocando banda inferior → Posible sobreventa."
-        else:
-            signal = Signal.NEUTRAL
-            interp = "Precio dentro de las bandas → Normal."
-        
-        results.append(IndicatorResult("Bollinger", close, signal, interp))
+    if not pd.isna(bb_upper):
+        signal = Signal.SELL if close >= bb_upper else Signal.NEUTRAL
+        results.append(IndicatorResult("BB Superior", bb_upper, signal, f"Banda Superior: {bb_upper:.2f}"))
+    
+    if not pd.isna(bb_middle):
+        signal = Signal.BUY if close > bb_middle else Signal.SELL
+        results.append(IndicatorResult("BB Media", bb_middle, signal, f"Banda Media: {bb_middle:.2f}"))
+    
+    if not pd.isna(bb_lower):
+        signal = Signal.BUY if close <= bb_lower else Signal.NEUTRAL
+        results.append(IndicatorResult("BB Inferior", bb_lower, signal, f"Banda Inferior: {bb_lower:.2f}"))
     
     # Estocástico
     stoch_k = last.get('stoch_k', 0)

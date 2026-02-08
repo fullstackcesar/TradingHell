@@ -1,0 +1,231 @@
+# 🔥 TradingHell - Funcionalidades y Mejoras
+
+## 📋 Estado del Proyecto
+
+**Última actualización:** 8 de Febrero, 2026 (noche)  
+**Stack:** Angular 21 (Zoneless) + FastAPI + Binance API + TailwindCSS  
+**Repositorio:** https://github.com/fullstackcesar/TradingHell
+
+---
+
+## ✅ Funcionalidades Implementadas
+
+### ⏱️ Intervalos de Tiempo (16 opciones)
+| Minutos | Horas | Días+ |
+|---------|-------|-------|
+| 1m, 3m, 5m, 15m, 30m | 1H, 2H, 4H, 6H, 8H, 12H | 1D, 3D, 1S, 1M |
+
+### 📅 Selectores de Periodo
+- **1 Mes** hasta **5 Años** + **Máximo**
+- Cálculo dinámico de velas según periodo/intervalo
+- Límite de 1000 velas (máximo Binance API)
+
+### 🎯 Panel de Acción (ActionPanel)
+- **Semáforo visual** con colores (verde/amarillo/rojo) para señales claras
+- **Cálculo automático** de estrategia:
+  - Precio de entrada sugerido
+  - Stop Loss automático basado en ATR
+  - Take Profit con ratio 2:1 mínimo
+  - Tamaño de posición como % del capital ($10,000 por defecto)
+- **Explicación en lenguaje simple** de por qué comprar/vender/esperar
+- **Botón "Abrir Posición"** para registrar operaciones
+
+### 📊 Gráfico de Velas (Chart)
+- **Gráfico TradingView** con lightweight-charts
+- **Marcadores de patrones** en el gráfico
+- **Líneas de indicadores** clickeables (SMA, EMA, etc.)
+- **Volumen** en histograma
+- **Líneas de precio** para soportes/resistencias
+- **Responsive** adaptable a pantalla
+
+### 📈 Análisis Técnico (Analysis)
+#### 12 Indicadores Individuales
+| Indicador | Tipo | ¿Visible en gráfico? |
+|-----------|------|---------------------|
+| RSI | Oscilador (0-100) | ❌ Badge |
+| MACD | Oscilador | ❌ Badge |
+| **SMA 20** | Media móvil | ✅ Línea |
+| **SMA 50** | Media móvil | ✅ Línea |
+| **SMA 200** | Media móvil | ✅ Línea |
+| **EMA 20** | Media exponencial | ✅ Línea |
+| **EMA 50** | Media exponencial | ✅ Línea |
+| **BB Superior** | Bollinger | ✅ Línea |
+| **BB Media** | Bollinger | ✅ Línea |
+| **BB Inferior** | Bollinger | ✅ Línea |
+| Estocástico | Oscilador (0-100) | ❌ Badge |
+| ADX | Oscilador (0-100) | ❌ Badge |
+
+- **Tooltips explicativos** al hover sobre cada indicador
+- **Click para mostrar línea** en gráfico (solo indicadores de precio)
+- **Badge en gráfico** muestra valor del indicador seleccionado
+
+#### Patrones de Velas con Emojis de Forma
+Cada patrón muestra emoji representativo de su forma:
+| Patrón | Emoji Forma | Señal |
+|--------|-------------|-------|
+| Doji | ✚ | Indecisión |
+| Martillo | 🔨 | 🟢 Alcista |
+| Martillo Inv. | ⚒️ | 🟢 Alcista |
+| Estrella Fugaz | 💫 | 🔴 Bajista |
+| Morning Star | 🌅 | 🟢🟢 Muy alcista |
+| Evening Star | 🌆 | 🔴🔴 Muy bajista |
+| Envolvente | 🔄 | ⚡ Fuerte |
+| Hombre Colgado | 🪢 | 🔴 Bajista |
+| 3 Soldados | 📈📈 | 🟢🟢 Muy alcista |
+| 3 Cuervos | 📉📉 | 🔴🔴 Muy bajista |
+| Harami | 🤰 | Reversión |
+| Penetrante | 🗡️ | 🟢 Alcista |
+| Nube Oscura | 🌧️ | 🔴 Bajista |
+| Pinzas | 🔧 | Reversión |
+
+### 🌐 Explorador de Mercados (MarketExplorer)
+Categorías disponibles:
+- **Criptomonedas** - BTC, ETH, SOL, etc.
+- **Acciones** - AAPL, GOOGL, TSLA, etc.
+- **ETFs** - SPY, QQQ, etc.
+- **Forex** - EUR/USD, GBP/USD, etc.
+- **Materias Primas** - Oro, Petróleo, etc.
+- **Índices** - S&P 500, NASDAQ, etc.
+
+### 📍 Seguimiento de Posiciones (PositionTracker)
+- **Registro de posiciones** abiertas (LONG/SHORT)
+- **P&L en tiempo real** calculado
+- **Barra de progreso** hacia TP/SL
+- **Alertas visuales** cuando se acerca a niveles
+
+### 💬 Chat IA (Chat)
+- Asistente con RAG (si hay OPENAI_API_KEY)
+- Base de conocimiento sobre trading
+- Colapsable para no ocupar espacio
+
+### ⚡ Tiempo Real
+- Botón **"EN VIVO"** para auto-refresh cada 500ms
+- Punto verde pulsante cuando está activo
+- **No muestra barra de progreso** en modo tiempo real (evita flickering)
+
+### 📊 Barra de Progreso de Carga
+- Muestra **porcentaje de carga** al cambiar de activo:
+  1. Cargando datos del mercado... (35%)
+  2. Analizando indicadores... (70%)
+  3. ¡Listo! (100%)
+- Se oculta automáticamente tras 1.5s
+- **Desactivada en modo tiempo real**
+
+---
+
+## 🔧 Backend API
+
+### Endpoints disponibles
+```
+GET /health                          - Estado del servidor
+GET /api/binance/klines/{symbol}     - Velas de Binance (rápido)
+GET /api/binance/analyze/{symbol}    - Análisis técnico (Binance)
+GET /api/chart/{symbol}              - Velas de yfinance
+GET /api/analyze/{symbol}            - Análisis técnico (yfinance)
+POST /api/ask                        - Chat con RAG
+```
+
+### Indicadores calculados
+- RSI, MACD, Bandas de Bollinger
+- SMA, EMA (múltiples períodos)
+- ADX, Estocástico, ATR
+- Volumen, Momentum, OBV, VWAP
+- Soportes y resistencias automáticos
+- Detección de patrones de velas
+
+---
+
+## 🚀 Mejoras Pendientes / Ideas
+
+### Alta Prioridad
+- [x] ~~**Gráfico no se ve a veces**~~ ✅ Arreglado con filtro duplicados
+- [x] ~~**Más intervalos de tiempo**~~ ✅ 16 intervalos disponibles
+- [x] ~~**Más indicadores individuales**~~ ✅ 12 indicadores
+- [ ] **Alertas por precio** - Notificaciones cuando llegue a X
+- [ ] **Histórico de posiciones** - Guardar en localStorage
+- [ ] **PnL acumulado** - Mostrar ganancias/pérdidas totales
+
+### Media Prioridad
+- [ ] **Series de indicadores** - Mostrar SMA/EMA como línea continua (no solo punto)
+- [ ] **Panel de osciladores** - Subgráfico para RSI, MACD, etc.
+- [ ] **Multi-timeframe** - Ver varios timeframes simultáneamente
+- [ ] **Drawing tools** - Líneas de tendencia, rectángulos
+- [ ] **Comparación de activos** - Overlay de múltiples símbolos
+- [ ] **Screener** - Buscar activos por criterios
+
+### Baja Prioridad
+- [ ] **Temas** - Light/Dark mode
+- [ ] **PWA** - App instalable
+- [ ] **Precio en vivo WebSocket** - Binance WS para cripto
+- [ ] **Backtesting simple** - Probar estrategias históricas
+
+---
+
+## 📁 Estructura de Archivos Clave
+
+```
+frontend/src/app/
+├── components/
+│   ├── action-panel/          # Panel de acción con semáforo
+│   ├── analysis/              # Análisis técnico con tooltips
+│   ├── chart/                 # Gráfico TradingView
+│   ├── chat/                  # Chat con IA
+│   ├── market-explorer/       # Explorador de mercados
+│   └── position-tracker/      # Seguimiento de posiciones
+├── pages/
+│   └── dashboard/             # Layout principal
+├── services/
+│   └── trading.service.ts     # Comunicación con API
+└── models/
+    └── trading.models.ts      # Tipos TypeScript
+
+backend/
+├── main.py                    # FastAPI app
+├── analysis/technical.py      # Cálculos de indicadores
+├── data/
+│   ├── binance_provider.py    # API Binance
+│   └── providers.py           # Abstracción de datos
+└── rag/
+    └── rag_engine.py          # Motor RAG para chat
+```
+
+---
+
+## 🎨 Diseño UI/UX
+
+### Colores (TailwindCSS custom)
+```css
+trading-bg: #0f0f1a      /* Fondo principal */
+trading-card: #1a1a2e    /* Cards */
+trading-border: #2a2a4a  /* Bordes */
+```
+
+### Señales
+- 🟢 Verde = COMPRA
+- 🔴 Rojo = VENTA  
+- 🟡 Amarillo = ESPERAR
+
+---
+
+## 🐛 Bugs Conocidos
+
+1. ~~**Gráfico puede no mostrarse**~~ ✅ RESUELTO
+   - Causa: Timestamps duplicados de Binance API
+   - Solución: Filtro `uniqueCandleData` elimina duplicados
+
+2. **Zone.js warning** al arrancar
+   - No afecta funcionamiento (app es zoneless)
+
+3. **Osciladores no muestran línea** (intencional)
+   - RSI, MACD, Estocástico, ADX usan escala 0-100
+   - No se pueden superponer al gráfico de precio
+   - Se muestran en badge superior al clickar
+
+---
+
+## 📝 Notas de Desarrollo
+
+- Angular 21 con **Signals** (no RxJS para estado simple)
+- **Resource API** para fetching reactivo
+- **Zoneless** para mejor rendimiento
+- Backend optimizado con **Binance API** para criptos (más rápido que yfinance)
