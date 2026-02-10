@@ -73,8 +73,8 @@ interface MarketCategory {
         </div>
       }
       
-      <!-- Lista de activos -->
-      <div class="flex-1 overflow-auto space-y-1" [class.max-h-32]="!isExpanded()" [class.max-h-64]="isExpanded()">
+      <!-- Lista de activos - ocupa todo el espacio disponible -->
+      <div class="flex-1 overflow-auto space-y-1 min-h-0">
         @for (asset of filteredAssets(); track asset.symbol) {
           <button
             (click)="selectAsset(asset)"

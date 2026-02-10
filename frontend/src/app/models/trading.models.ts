@@ -29,6 +29,7 @@ export interface PatternResult {
   signal: string;
   confidence: number;
   description: string;
+  candle_index?: number; // Índice relativo desde el final (-1, -2, etc.)
 }
 
 export interface TrendDetails {

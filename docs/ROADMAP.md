@@ -6,6 +6,18 @@ Construir la plataforma de análisis técnico más completa y educativa para tra
 
 ---
 
+## 🔧 Pendiente Inmediato
+
+### Visualización de Patrones de Velas
+- [ ] **Rediseñar marcadores de patrones** - Los marcadores actuales tapan las velas del gráfico
+- [ ] Opciones a considerar:
+  - Panel lateral con lista de patrones detectados
+  - Tooltip al hacer hover sobre la vela
+  - Indicadores sutiles (puntos pequeños) sin texto
+  - Toggle para mostrar/ocultar marcadores
+
+---
+
 ## 🎯 Próximas Versiones
 
 ### v1.1 - Alertas y Persistencia

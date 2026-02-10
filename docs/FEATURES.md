@@ -64,6 +64,13 @@
 - **Volumen** en histograma
 - **Líneas de precio** para soportes/resistencias
 - **Responsive** adaptable a pantalla
+- **Redimensionable** verticalmente con handle de color
+
+### ⏰ Relojes de Mercado (MarketClocks)
+- **Estado visual** de mercados principales: NY, Londres, Tokio
+- **Colores intuitivos:** 🟢 Abierto, 🔴 Cerrado, 🟡 Pre/Post
+- **Hora local** de cada mercado
+- **Oculto en móvil** para optimizar espacio
 
 ### 📈 Análisis Técnico (Analysis)
 #### 12 Indicadores Individuales
@@ -176,6 +183,10 @@ POST /api/ask                        - Chat con RAG
 - [x] **SVGs inline en artículos** - Visuales junto a explicaciones
 - [x] **Normalización de patrones** - Soporte español/inglés, tildes
 - [x] **Marcadores en gráfico** - Patrones detectados con tooltips
+- [x] **Relojes de Mercado** - Estado de NY, Londres, Tokio en tiempo real
+- [x] **Paneles Redimensionables** - Todos los componentes con resize vertical
+- [x] **Colores únicos por panel** - Handle distintivo para cada componente
+- [x] **Scroll de página** - Paneles pueden crecer más allá del viewport
 
 ---
 
@@ -235,6 +246,18 @@ trading-border: #2a2a4a  /* Bordes */
 - 🟢 Verde = COMPRA
 - 🔴 Rojo = VENTA  
 - 🟡 Amarillo = ESPERAR
+
+### Paneles Redimensionables
+Todos los componentes tienen resize vertical con colores distintivos:
+| Componente | Color Handle |
+|------------|-------------|
+| Gráfico | 🟣 Indigo |
+| Posiciones | 🟢 Verde |
+| Explorador | 🔵 Cyan |
+| Acción | 🟠 Amber |
+| Análisis | 🟣 Purple |
+| Oportunidades | 🟢 Emerald |
+| Alertas | 🟡 Yellow |
 
 ---
 

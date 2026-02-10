@@ -26,37 +26,49 @@ interface KnowledgeArticle {
   template: `
     <div class="h-full flex flex-col bg-trading-bg">
       <!-- Header -->
-      <div class="flex-shrink-0 p-3 border-b border-trading-border">
-        <h2 class="text-lg font-bold flex items-center gap-2">
-          📚 Centro de Aprendizaje
-          <span class="text-xs text-gray-500 font-normal">Base de conocimiento de trading profesional</span>
-        </h2>
+      <div class="flex-shrink-0 p-2 sm:p-3 border-b border-trading-border">
+        <div class="flex items-center justify-between gap-2">
+          <h2 class="text-sm sm:text-lg font-bold flex items-center gap-2">
+            📚 <span class="hidden sm:inline">Centro de Aprendizaje</span><span class="sm:hidden">Aprender</span>
+          </h2>
+          <span class="text-xs text-gray-500 font-normal hidden lg:inline">Base de conocimiento de trading profesional</span>
+          
+          <!-- Selector de categoría móvil (dropdown nativo) -->
+          <select
+            class="md:hidden px-2 py-1 rounded bg-gray-700 border border-gray-600 text-xs text-white"
+            [value]="selectedCategory()"
+            (change)="selectCategory($any($event.target).value)">
+            @for (cat of categories(); track cat.id) {
+              <option [value]="cat.id">{{ cat.icon }} {{ cat.title }} ({{ cat.count }})</option>
+            }
+          </select>
+        </div>
       </div>
       
       <!-- Layout 2 columnas: Menú + Contenido -->
       <div class="flex-1 flex min-h-0 overflow-hidden">
         
-        <!-- Sidebar: Categorías -->
-        <div class="w-64 flex-shrink-0 border-r border-trading-border overflow-y-auto">
+        <!-- Sidebar: Categorías (oculto en móvil) -->
+        <div class="hidden md:block w-48 lg:w-64 flex-shrink-0 border-r border-trading-border overflow-y-auto">
           <div class="p-2 space-y-1">
             @for (cat of categories(); track cat.id) {
               <button 
                 (click)="selectCategory(cat.id)"
-                class="w-full text-left px-3 py-2 rounded transition-all flex items-center gap-2"
+                class="w-full text-left px-2 lg:px-3 py-2 rounded transition-all flex items-center gap-2"
                 [class]="selectedCategory() === cat.id 
                   ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/50' 
                   : 'hover:bg-gray-800 text-gray-400 hover:text-white'">
-                <span class="text-lg">{{ cat.icon }}</span>
+                <span class="text-base lg:text-lg">{{ cat.icon }}</span>
                 <div>
-                  <div class="font-medium text-sm">{{ cat.title }}</div>
-                  <div class="text-xs text-gray-500">{{ cat.count }} artículos</div>
+                  <div class="font-medium text-xs lg:text-sm">{{ cat.title }}</div>
+                  <div class="text-xs text-gray-500 hidden lg:block">{{ cat.count }} artículos</div>
                 </div>
               </button>
             }
           </div>
           
-          <!-- Quick Tips -->
-          <div class="p-3 m-2 bg-yellow-500/10 rounded-lg border border-yellow-500/30">
+          <!-- Quick Tips (solo en pantallas grandes) -->
+          <div class="hidden lg:block p-3 m-2 bg-yellow-500/10 rounded-lg border border-yellow-500/30">
             <h4 class="text-xs font-bold text-yellow-400 mb-2">💡 Tip del día</h4>
             <p class="text-xs text-gray-300">{{ dailyTip() }}</p>
           </div>
@@ -73,16 +85,16 @@ interface KnowledgeArticle {
             </div>
           } @else if (selectedArticle()) {
             <!-- Article View -->
-            <div class="p-4 max-w-4xl mx-auto">
+            <div class="p-2 sm:p-4 max-w-4xl mx-auto">
               <button 
                 (click)="selectedArticle.set(null)"
                 class="text-xs text-indigo-400 hover:text-indigo-300 mb-3 flex items-center gap-1">
                 ← Volver a {{ getCategoryTitle(selectedCategory()) }}
               </button>
               
-              <article class="prose prose-invert max-w-none">
-                <h1 class="text-2xl font-bold mb-4 flex items-center gap-3">
-                  <span class="text-3xl">{{ selectedArticle()!.icon }}</span>
+              <article class="prose prose-invert max-w-none prose-sm sm:prose-base">
+                <h1 class="text-lg sm:text-2xl font-bold mb-4 flex items-center gap-2 sm:gap-3">
+                  <span class="text-2xl sm:text-3xl">{{ selectedArticle()!.icon }}</span>
                   {{ selectedArticle()!.title }}
                 </h1>
                 
@@ -90,57 +102,58 @@ interface KnowledgeArticle {
                 @if (selectedArticle()!.isGallery) {
                   <div class="not-prose">
                     <!-- Filtros -->
-                    <div class="flex gap-2 mb-4 flex-wrap">
+                    <div class="flex gap-1 sm:gap-2 mb-4 flex-wrap">
                       <button 
                         (click)="galleryFilter.set('all')"
-                        class="px-3 py-1 rounded text-sm transition-all"
+                        class="px-2 sm:px-3 py-1 rounded text-xs sm:text-sm transition-all"
                         [class]="galleryFilter() === 'all' ? 'bg-indigo-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'">
                         Todos
                       </button>
                       <button 
                         (click)="galleryFilter.set('bullish')"
-                        class="px-3 py-1 rounded text-sm transition-all"
+                        class="px-2 sm:px-3 py-1 rounded text-xs sm:text-sm transition-all"
                         [class]="galleryFilter() === 'bullish' ? 'bg-green-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'">
-                        🟢 Alcistas
+                        🟢 <span class="hidden sm:inline">Alcistas</span>
                       </button>
                       <button 
                         (click)="galleryFilter.set('bearish')"
-                        class="px-3 py-1 rounded text-sm transition-all"
+                        class="px-2 sm:px-3 py-1 rounded text-xs sm:text-sm transition-all"
                         [class]="galleryFilter() === 'bearish' ? 'bg-red-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'">
-                        🔴 Bajistas
+                        🔴 <span class="hidden sm:inline">Bajistas</span>
                       </button>
                       <button 
                         (click)="galleryFilter.set('neutral')"
-                        class="px-3 py-1 rounded text-sm transition-all"
+                        class="px-2 sm:px-3 py-1 rounded text-xs sm:text-sm transition-all"
                         [class]="galleryFilter() === 'neutral' ? 'bg-gray-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'">
-                        ⚪ Neutrales
+                        ⚪ <span class="hidden sm:inline">Neutrales</span>
                       </button>
                     </div>
                     
-                    <!-- Grid de patrones -->
-                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    <!-- Grid de patrones - responsive -->
+                    <div class="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4">
                       @for (pattern of getFilteredPatterns(); track pattern.key) {
-                        <div class="p-4 rounded-lg border transition-all hover:scale-105"
+                        <div class="p-2 sm:p-4 rounded-lg border transition-all hover:scale-105"
                              [class]="getPatternCardClass(pattern.signal)">
                           <!-- SVG del patrón -->
-                          <div class="bg-gray-900/50 rounded-lg p-3 mb-3 flex items-center justify-center min-h-[100px]"
+                          <div class="bg-gray-900/50 rounded-lg p-2 sm:p-3 mb-2 sm:mb-3 flex items-center justify-center min-h-[80px] sm:min-h-[100px]"
                                [innerHTML]="getPatternSVG(pattern.key)">
                           </div>
                           
                           <!-- Info -->
                           <div class="text-center">
-                            <h4 class="font-bold text-sm mb-1" [class]="getPatternTextClass(pattern.signal)">
+                            <h4 class="font-bold text-xs sm:text-sm mb-1" [class]="getPatternTextClass(pattern.signal)">
                               {{ pattern.name }}
                             </h4>
-                            <p class="text-xs text-gray-500 mb-2">{{ pattern.nameEn }}</p>
-                            <p class="text-xs text-gray-400">{{ pattern.description }}</p>
-                            <div class="flex justify-center gap-2 mt-2">
-                              <span class="text-xs px-2 py-0.5 rounded"
+                            <p class="text-xs text-gray-500 mb-1 sm:mb-2 hidden sm:block">{{ pattern.nameEn }}</p>
+                            <p class="text-xs text-gray-400 line-clamp-2">{{ pattern.description }}</p>
+                            <div class="flex justify-center gap-1 sm:gap-2 mt-2 flex-wrap">
+                              <span class="text-xs px-1 sm:px-2 py-0.5 rounded"
                                     [class]="getPatternBadgeClass(pattern.signal)">
-                                {{ pattern.signal === 'bullish' ? '🟢 Alcista' : pattern.signal === 'bearish' ? '🔴 Bajista' : '⚪ Neutral' }}
+                                {{ pattern.signal === 'bullish' ? '🟢' : pattern.signal === 'bearish' ? '🔴' : '⚪' }}
+                                <span class="hidden sm:inline">{{ pattern.signal === 'bullish' ? 'Alcista' : pattern.signal === 'bearish' ? 'Bajista' : 'Neutral' }}</span>
                               </span>
-                              <span class="text-xs px-2 py-0.5 bg-gray-700 rounded text-gray-300">
-                                {{ pattern.candles }} {{ pattern.candles === 1 ? 'vela' : 'velas' }}
+                              <span class="text-xs px-1 sm:px-2 py-0.5 bg-gray-700 rounded text-gray-300">
+                                {{ pattern.candles }}v
                               </span>
                             </div>
                           </div>
@@ -271,6 +284,14 @@ interface KnowledgeArticle {
       height: 100%;
     }
     
+    .scrollbar-hide {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    .scrollbar-hide::-webkit-scrollbar {
+      display: none;
+    }
+    
     .line-clamp-2 {
       display: -webkit-box;
       -webkit-line-clamp: 2;
@@ -287,6 +308,12 @@ interface KnowledgeArticle {
     .prose code { @apply bg-gray-800 px-1 py-0.5 rounded text-sm text-yellow-400; }
     .prose blockquote { 
       @apply border-l-4 border-indigo-500 pl-4 italic text-gray-400 my-4;
+    }
+    
+    @media (max-width: 640px) {
+      .prose h3 { @apply text-base; }
+      .prose h4 { @apply text-sm; }
+      .prose p, .prose ul, .prose ol { @apply text-sm; }
     }
   `]
 })

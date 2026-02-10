@@ -34,9 +34,7 @@ import { createChart, IChartApi, ISeriesApi, CandlestickData, Time, SeriesMarker
               <button (click)="clearIndicator()" class="ml-1 hover:text-white">✕</button>
             </span>
           }
-          @if (patterns().length) {
-            <span class="text-indigo-400">{{ patterns().length }} patrones</span>
-          }
+          <!-- TODO: Mejorar visualización de patrones - los marcadores tapan el gráfico -->
           @if (tradingService.chartData.isLoading()) {
             <span class="text-gray-400">⏳</span>
           }
@@ -44,19 +42,6 @@ import { createChart, IChartApi, ISeriesApi, CandlestickData, Time, SeriesMarker
       </div>
       
       <div #chartContainer class="flex-1 w-full rounded overflow-hidden"></div>
-      
-      <!-- Leyenda de patrones detectados -->
-      @if (patterns().length) {
-        <div class="mt-1 flex flex-wrap gap-1 flex-shrink-0">
-          @for (p of patterns().slice(0, 3); track p.name) {
-            <span 
-              class="px-1.5 py-0.5 rounded text-xs"
-              [class]="p.signal && p.signal.includes('COMPRA') ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'">
-              {{ getPatternEmoji(p.signal) }} {{ p.name }}
-            </span>
-          }
-        </div>
-      }
     </div>
   `,
   styles: [`
@@ -131,14 +116,15 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
       }
     });
     
-    // Efecto para actualizar marcadores de patrones
-    effect(() => {
-      const ready = this.chartReady();
-      const pats = this.patterns();
-      if (ready && pats && this.candleSeries && this.chart) {
-        this.updatePatternMarkers(pats);
-      }
-    });
+    // TODO: Mejorar visualización de patrones - marcadores tapan el gráfico
+    // Efecto para actualizar marcadores de patrones (DESACTIVADO)
+    // effect(() => {
+    //   const ready = this.chartReady();
+    //   const pats = this.patterns();
+    //   if (ready && pats && this.candleSeries && this.chart) {
+    //     this.updatePatternMarkers(pats);
+    //   }
+    // });
     
     // Efecto para mostrar indicador seleccionado
     effect(() => {
@@ -189,13 +175,6 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
     }
   }
   
-  getPatternEmoji(signal: string | undefined): string {
-    if (!signal) return '🔹';
-    if (signal.includes('COMPRA')) return '🟢';
-    if (signal.includes('VENTA')) return '🔴';
-    return '🟡';
-  }
-  
   private updatePatternMarkers(patterns: PatternResult[]): void {
     if (!this.candleSeries) return;
     
@@ -205,38 +184,40 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
     const totalCandles = chartData.candles.length;
     const tempMarkers: SeriesMarker<Time>[] = [];
     
-    // Máximo 6 patrones para no saturar el gráfico
-    const patternsToShow = patterns.slice(0, 6);
+    // Agrupar patrones por vela
+    const patternsByCandle = new Map<number, PatternResult[]>();
     
-    patternsToShow.forEach((p, i) => {
-      const isBullish = p.signal?.includes('COMPRA');
-      const isNeutral = p.signal?.includes('NEUTRAL') || p.name.toUpperCase().includes('DOJI');
+    patterns.forEach((p) => {
+      const relativeIndex = p.candle_index ?? -1;
+      const candleIndex = totalCandles + relativeIndex;
       
-      // Distribuir patrones en diferentes velas para que no se solapen
-      // Usar diferentes zonas del gráfico basadas en el tipo de patrón
-      let candleOffset: number;
-      
-      // Los patrones alcistas van en la parte derecha (más reciente)
-      // Los bajistas en la parte central-derecha
-      // Los neutrales en el medio
-      if (isBullish) {
-        candleOffset = i * 4; // 0, 4, 8, 12...
-      } else if (isNeutral) {
-        candleOffset = 2 + i * 5; // 2, 7, 12...
-      } else {
-        candleOffset = 1 + i * 4; // 1, 5, 9, 13...
+      if (candleIndex >= 0 && candleIndex < totalCandles) {
+        if (!patternsByCandle.has(candleIndex)) {
+          patternsByCandle.set(candleIndex, []);
+        }
+        patternsByCandle.get(candleIndex)!.push(p);
       }
-      
-      const candleIndex = Math.max(0, totalCandles - 1 - candleOffset);
+    });
+    
+    // Crear marcadores - uno por vela con patrones
+    patternsByCandle.forEach((patternsInCandle, candleIndex) => {
       const candle = chartData.candles[candleIndex];
-      
       if (!candle) return;
       
-      // Emoji descriptivo del tipo de patrón
-      const patternEmoji = this.getPatternTypeEmoji(p.name);
-      const shortName = this.getShortPatternName(p.name);
+      const mainPattern = patternsInCandle[0];
+      const isBullish = mainPattern.signal?.includes('COMPRA');
+      const isNeutral = mainPattern.signal?.includes('NEUTRAL') || mainPattern.name.toUpperCase().includes('DOJI');
       
-      // Determinar color y forma según tipo
+      // Texto: nombre del patrón (o cantidad si hay varios)
+      let displayText: string;
+      if (patternsInCandle.length === 1) {
+        displayText = mainPattern.name;
+      } else {
+        // Mostrar nombres de todos los patrones separados
+        displayText = patternsInCandle.map(p => p.name).join(' | ');
+      }
+      
+      // Colores y posiciones según tipo de señal
       let color: string;
       let shape: 'arrowUp' | 'arrowDown' | 'circle';
       let position: 'belowBar' | 'aboveBar';
@@ -260,11 +241,11 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
         position,
         color,
         shape,
-        text: `${patternEmoji} ${shortName}`,
+        text: displayText,
       } as SeriesMarker<Time>);
     });
     
-    // Ordenar por tiempo ascendente (requerido por lightweight-charts)
+    // Ordenar por tiempo
     this.markers = tempMarkers.sort((a, b) => {
       const timeA = typeof a.time === 'number' ? a.time : new Date(a.time as string).getTime() / 1000;
       const timeB = typeof b.time === 'number' ? b.time : new Date(b.time as string).getTime() / 1000;
@@ -272,43 +253,6 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
     });
     
     this.candleSeries.setMarkers(this.markers);
-  }
-  
-  private getPatternTypeEmoji(name: string): string {
-    const upper = name.toUpperCase();
-    if (upper.includes('MARTILLO') || upper.includes('HAMMER')) return '🔨';
-    if (upper.includes('ESTRELLA') || upper.includes('STAR')) return '⭐';
-    if (upper.includes('ENVOLVENTE') || upper.includes('ENGULFING')) return '🌀';
-    if (upper.includes('HARAMI')) return '🤰';
-    if (upper.includes('DOJI')) return '➕';
-    if (upper.includes('SOLDADO') || upper.includes('SOLDIER')) return '🦸';
-    if (upper.includes('CUERVO') || upper.includes('CROW')) return '🦢';
-    if (upper.includes('NUBE') || upper.includes('CLOUD')) return '☁️';
-    if (upper.includes('PENETRANTE') || upper.includes('PIERCING')) return '🗡️';
-    if (upper.includes('PINZA') || upper.includes('TWEEZER')) return '🧲';
-    if (upper.includes('MARUBOZU')) return '🟩';
-    return '🕯️';
-  }
-  
-  private getShortPatternName(name: string): string {
-    // Abreviar nombres largos
-    const upper = name.toUpperCase();
-    if (upper.includes('MARTILLO INVERTIDO') || upper.includes('INVERTED')) return 'M.Inv';
-    if (upper.includes('MARTILLO') || upper.includes('HAMMER')) return 'Mart';
-    if (upper.includes('TRES SOLDADOS') || upper.includes('THREE WHITE')) return '3Sol';
-    if (upper.includes('TRES CUERVOS') || upper.includes('THREE BLACK')) return '3Cue';
-    if (upper.includes('ESTRELLA MAÑANA') || upper.includes('MORNING')) return 'E.Mañ';
-    if (upper.includes('ESTRELLA TARDE') || upper.includes('EVENING')) return 'E.Tar';
-    if (upper.includes('ENVOLVENTE')) return 'Envol';
-    if (upper.includes('ENGULFING')) return 'Engul';
-    if (upper.includes('HARAMI')) return 'Haram';
-    if (upper.includes('DOJI')) return 'Doji';
-    if (upper.includes('MARUBOZU')) return 'Marub';
-    if (upper.includes('NUBE OSCURA') || upper.includes('DARK CLOUD')) return 'Nube';
-    if (upper.includes('PENETRANTE') || upper.includes('PIERCING')) return 'Penet';
-    
-    // Nombre genérico corto
-    return name.length > 8 ? name.substring(0, 6) + '..' : name;
   }
   
   private updateHighlightedLine(level: { type: string; price: number } | null): void {

@@ -14,14 +14,15 @@ import { PositionTrackerComponent, NewPositionData } from '../../components/posi
 import { OpportunitiesComponent } from '../../components/opportunities/opportunities.component';
 import { AlertsComponent } from '../../components/alerts/alerts.component';
 import { LearningComponent } from '../../components/learning/learning.component';
+import { MarketClocksComponent } from '../../components/market-clocks/market-clocks.component';
 import { TIMEFRAMES, PERIODS, TrendDetails } from '../../models/trading.models';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [FormsModule, ChartComponent, AnalysisComponent, ChatComponent, ActionPanelComponent, MarketExplorerComponent, PositionTrackerComponent, OpportunitiesComponent, AlertsComponent, LearningComponent],
+  imports: [FormsModule, ChartComponent, AnalysisComponent, ChatComponent, ActionPanelComponent, MarketExplorerComponent, PositionTrackerComponent, OpportunitiesComponent, AlertsComponent, LearningComponent, MarketClocksComponent],
   template: `
-    <div class="h-screen flex flex-col overflow-hidden bg-trading-bg relative">
+    <div class="min-h-screen flex flex-col bg-trading-bg relative">
       <!-- Barra de progreso de carga (solo cuando NO es tiempo real) -->
       @if (tradingService.loadingStep() !== 'idle' && !isRealTime()) {
         <div class="absolute top-0 left-0 right-0 z-50">
@@ -44,110 +45,126 @@ import { TIMEFRAMES, PERIODS, TrendDetails } from '../../models/trading.models';
         </div>
       }
       
-      <!-- Header minimalista -->
-      <header class="flex-shrink-0 px-3 py-2 border-b border-trading-border flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <h1 class="text-lg font-bold">🔥 TradingHell</h1>
-          <span class="text-gray-500 text-xs hidden md:inline">| {{ currentSymbol() }}</span>
+      <!-- Header minimalista y responsivo -->
+      <header class="flex-shrink-0 px-2 sm:px-3 py-2 border-b border-trading-border">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <!-- Logo y símbolo -->
+          <div class="flex items-center gap-2 sm:gap-3">
+            <h1 class="text-base sm:text-lg font-bold">🔥 <span class="sm:hidden">TH</span><span class="hidden sm:inline">TradingHell</span></h1>
+            <span class="text-gray-500 text-xs hidden lg:inline">| {{ currentSymbol() }}</span>
+          </div>
+          
+          <!-- Relojes de mercado (centro) - oculto en móvil -->
+          <div class="hidden md:flex order-2 flex-1 justify-center">
+            <app-market-clocks [symbol]="currentSymbol()" />
+          </div>
+          
+          <!-- Controles (derecha) -->
+          <div class="flex items-center gap-1 sm:gap-2">
+            <input
+              type="text"
+              [(ngModel)]="symbolInput"
+              (keydown.enter)="changeSymbol()"
+              placeholder="Símbolo"
+              class="w-16 sm:w-24 px-1 sm:px-2 py-1 rounded bg-trading-card border border-trading-border 
+                     focus:border-indigo-500 focus:outline-none text-xs"
+            />
+            <select
+              [(ngModel)]="selectedTimeframe"
+              (ngModelChange)="changeTimeframe($event)"
+              class="px-1 sm:px-2 py-1 rounded bg-trading-card border border-trading-border text-xs"
+              title="Intervalo de vela">
+              @for (tf of timeframes; track tf.value) {
+                <option [value]="tf.value">{{ tf.label }}</option>
+              }
+            </select>
+            <select
+              [(ngModel)]="selectedPeriod"
+              (ngModelChange)="changePeriod($event)"
+              class="hidden sm:block px-2 py-1 rounded bg-trading-card border border-trading-border text-xs"
+              title="Periodo de historia">
+              @for (p of periods; track p.value) {
+                <option [value]="p.value">{{ p.label }}</option>
+              }
+            </select>
+            <button
+              (click)="refreshAnalysis()"
+              [disabled]="tradingService.isLoading()"
+              class="p-1 rounded bg-trading-card border border-trading-border hover:border-indigo-500 transition text-xs"
+              title="Actualizar análisis técnico">
+              📊
+            </button>
+            
+            <!-- Botón tiempo real -->
+            <button
+              (click)="toggleRealTime()"
+              class="px-1 sm:px-2 py-1 rounded text-xs font-bold transition-all flex items-center gap-1"
+              [class]="isRealTime() 
+                ? 'bg-green-500/20 border border-green-500 text-green-400 animate-pulse' 
+                : 'bg-trading-card border border-trading-border text-gray-400 hover:border-indigo-500'"
+              [title]="isRealTime() ? 'Precio en vivo activo' : 'Activar precio en tiempo real'">
+              <span>{{ isRealTime() ? '🟢' : '⚪' }}</span>
+              <span class="hidden md:inline">{{ isRealTime() ? 'LIVE' : 'RT' }}</span>
+            </button>
+          </div>
         </div>
         
-        <div class="flex items-center gap-2">
-          <input
-            type="text"
-            [(ngModel)]="symbolInput"
-            (keydown.enter)="changeSymbol()"
-            placeholder="Símbolo..."
-            class="w-24 px-2 py-1 rounded bg-trading-card border border-trading-border 
-                   focus:border-indigo-500 focus:outline-none text-xs"
-          />
-          <select
-            [(ngModel)]="selectedTimeframe"
-            (ngModelChange)="changeTimeframe($event)"
-            class="px-2 py-1 rounded bg-trading-card border border-trading-border text-xs"
-            title="Intervalo de vela">
-            @for (tf of timeframes; track tf.value) {
-              <option [value]="tf.value">{{ tf.label }}</option>
-            }
-          </select>
-          <select
-            [(ngModel)]="selectedPeriod"
-            (ngModelChange)="changePeriod($event)"
-            class="px-2 py-1 rounded bg-trading-card border border-trading-border text-xs"
-            title="Periodo de historia">
-            @for (p of periods; track p.value) {
-              <option [value]="p.value">{{ p.label }}</option>
-            }
-          </select>
-          <button
-            (click)="refreshAnalysis()"
-            [disabled]="tradingService.isLoading()"
-            class="p-1 rounded bg-trading-card border border-trading-border hover:border-indigo-500 transition text-xs"
-            title="Actualizar análisis técnico">
-            📊
-          </button>
-          
-          <!-- Botón tiempo real (solo precio) -->
-          <button
-            (click)="toggleRealTime()"
-            class="px-2 py-1 rounded text-xs font-bold transition-all flex items-center gap-1"
-            [class]="isRealTime() 
-              ? 'bg-green-500/20 border border-green-500 text-green-400 animate-pulse' 
-              : 'bg-trading-card border border-trading-border text-gray-400 hover:border-indigo-500'"
-            [title]="isRealTime() ? 'Precio en vivo activo' : 'Activar precio en tiempo real'">
-            <span>{{ isRealTime() ? '🟢' : '⚪' }}</span>
-            <span class="hidden sm:inline">{{ isRealTime() ? 'PRECIO VIVO' : 'Precio RT' }}</span>
-          </button>
+        <!-- Reloj de mercado en móvil (debajo del header) -->
+        <div class="md:hidden mt-2 flex justify-center">
+          <app-market-clocks [symbol]="currentSymbol()" />
         </div>
       </header>
       
-      <!-- Tabs principales: Trading / Oportunidades -->
-      <div class="flex-shrink-0 px-2 pt-2 flex items-center gap-2">
-        <button 
-          (click)="activeView.set('trading')"
-          class="px-3 py-1.5 rounded-t-lg text-xs font-bold transition-all"
-          [class]="activeView() === 'trading' 
-            ? 'bg-trading-card text-white border-t border-l border-r border-indigo-500' 
-            : 'bg-gray-800/50 text-gray-400 hover:text-white'">
-          📊 Trading
-        </button>
-        <button 
-          (click)="activeView.set('scanner')"
-          class="px-3 py-1.5 rounded-t-lg text-xs font-bold transition-all flex items-center gap-1"
-          [class]="activeView() === 'scanner' 
-            ? 'bg-trading-card text-white border-t border-l border-r border-green-500' 
-            : 'bg-gray-800/50 text-gray-400 hover:text-white'">
-          🎯 Scanner
-          <span class="px-1.5 py-0.5 bg-green-500/30 rounded text-green-400 text-xs">NEW</span>
-        </button>
-        <button 
-          (click)="activeView.set('alerts')"
-          class="px-3 py-1.5 rounded-t-lg text-xs font-bold transition-all"
-          [class]="activeView() === 'alerts' 
-            ? 'bg-trading-card text-white border-t border-l border-r border-yellow-500' 
-            : 'bg-gray-800/50 text-gray-400 hover:text-white'">
-          🔔 Alertas
-        </button>
-        <button 
-          (click)="activeView.set('learning')"
-          class="px-3 py-1.5 rounded-t-lg text-xs font-bold transition-all"
-          [class]="activeView() === 'learning' 
-            ? 'bg-trading-card text-white border-t border-l border-r border-purple-500' 
-            : 'bg-gray-800/50 text-gray-400 hover:text-white'">
-          📚 Aprender
-        </button>
+      <!-- Tabs principales con scroll horizontal en móvil -->
+      <div class="flex-shrink-0 px-2 pt-2 overflow-x-auto scrollbar-hide">
+        <div class="flex items-center gap-1 sm:gap-2 min-w-max">
+          <button 
+            (click)="activeView.set('trading')"
+            class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-t-lg text-xs font-bold transition-all whitespace-nowrap"
+            [class]="activeView() === 'trading' 
+              ? 'bg-trading-card text-white border-t border-l border-r border-indigo-500' 
+              : 'bg-gray-800/50 text-gray-400 hover:text-white'">
+            📊 <span class="hidden sm:inline">Trading</span>
+          </button>
+          <button 
+            (click)="activeView.set('scanner')"
+            class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-t-lg text-xs font-bold transition-all flex items-center gap-1 whitespace-nowrap"
+            [class]="activeView() === 'scanner' 
+              ? 'bg-trading-card text-white border-t border-l border-r border-green-500' 
+              : 'bg-gray-800/50 text-gray-400 hover:text-white'">
+            🎯 <span class="hidden sm:inline">Scanner</span>
+            <span class="hidden sm:inline px-1 py-0.5 bg-green-500/30 rounded text-green-400 text-xs">NEW</span>
+          </button>
+          <button 
+            (click)="activeView.set('alerts')"
+            class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-t-lg text-xs font-bold transition-all whitespace-nowrap"
+            [class]="activeView() === 'alerts' 
+              ? 'bg-trading-card text-white border-t border-l border-r border-yellow-500' 
+              : 'bg-gray-800/50 text-gray-400 hover:text-white'">
+            🔔 <span class="hidden sm:inline">Alertas</span>
+          </button>
+          <button 
+            (click)="activeView.set('learning')"
+            class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-t-lg text-xs font-bold transition-all whitespace-nowrap"
+            [class]="activeView() === 'learning' 
+              ? 'bg-trading-card text-white border-t border-l border-r border-purple-500' 
+              : 'bg-gray-800/50 text-gray-400 hover:text-white'">
+            📚 <span class="hidden sm:inline">Aprender</span>
+          </button>
+        </div>
       </div>
       
       <!-- Layout principal con paneles redimensionables -->
-      <div class="flex-1 grid grid-cols-12 gap-2 p-2 min-h-0">
+      <div class="flex-1 grid grid-cols-12 gap-1 sm:gap-2 p-1 sm:p-2">
         
         @if (activeView() === 'trading') {
           <!-- VISTA TRADING: Explorador + Gráfico + Acción + Análisis -->
           
-          <!-- Columna izquierda: Explorador + Acción -->
-          <div class="col-span-12 lg:col-span-2 flex flex-col gap-2 min-h-0 overflow-visible resizable-col">
-            <app-market-explorer class="flex-shrink-0 resizable-panel" />
+          <!-- Columna izquierda: Explorador + Acción (oculto en móvil, visible en md+) -->
+          <div class="hidden md:flex col-span-12 md:col-span-3 lg:col-span-2 flex-col gap-2">
+            <app-market-explorer class="explorer-resizable" />
             <app-action-panel 
-              class="flex-1 min-h-0 resizable-panel"
+              class="action-resizable"
               (levelHovered)="onLevelHovered($event)"
               (trendHovered)="onTrendHovered($event)"
               (openPosition)="openPositionTracker($event)"
@@ -155,9 +172,9 @@ import { TIMEFRAMES, PERIODS, TrendDetails } from '../../models/trading.models';
           </div>
           
           <!-- Columna central: Gráfico -->
-          <div class="col-span-12 lg:col-span-7 flex flex-col gap-2 min-h-0">
+          <div class="col-span-12 md:col-span-9 lg:col-span-7 flex flex-col gap-2">
             <app-chart 
-              class="flex-1 min-h-0 resizable-panel"
+              class="chart-resizable"
               [highlightedLevel]="highlightedLevel()" 
               [patterns]="chartPatterns()"
               [showTrendLines]="trendLinesVisible()"
@@ -166,7 +183,7 @@ import { TIMEFRAMES, PERIODS, TrendDetails } from '../../models/trading.models';
             <!-- Posiciones abiertas (si hay) -->
             @if (hasOpenPositions()) {
               <app-position-tracker 
-                class="flex-shrink-0 resizable-panel" style="max-height: 150px;"
+                class="positions-resizable"
                 [prefillPosition]="pendingPosition()"
                 (closePosition)="onClosePosition($event)"
                 (positionAdded)="onPositionAdded()"
@@ -174,9 +191,30 @@ import { TIMEFRAMES, PERIODS, TrendDetails } from '../../models/trading.models';
             }
           </div>
           
-          <!-- Columna derecha: Análisis completo -->
-          <div class="col-span-12 lg:col-span-3 flex flex-col min-h-0 overflow-visible resizable-col">
-            <app-analysis class="flex-1 resizable-panel" />
+          <!-- Columna derecha: Análisis completo (oculto en móvil/tablet, visible en lg+) -->
+          <div class="hidden lg:flex col-span-12 lg:col-span-3 flex-col">
+            <app-analysis class="analysis-resizable" />
+          </div>
+          
+          <!-- Panel inferior móvil: Acción + Explorer colapsables -->
+          <div class="col-span-12 md:hidden flex flex-col gap-2 mt-2">
+            <details class="trading-card">
+              <summary class="cursor-pointer p-2 text-xs font-bold">📋 Panel de Acción</summary>
+              <app-action-panel 
+                class="h-64"
+                (levelHovered)="onLevelHovered($event)"
+                (trendHovered)="onTrendHovered($event)"
+                (openPosition)="openPositionTracker($event)"
+              />
+            </details>
+            <details class="trading-card">
+              <summary class="cursor-pointer p-2 text-xs font-bold">🔍 Explorador</summary>
+              <app-market-explorer class="h-48" />
+            </details>
+            <details class="trading-card">
+              <summary class="cursor-pointer p-2 text-xs font-bold">📊 Análisis</summary>
+              <app-analysis class="h-64" />
+            </details>
           </div>
         }
         
@@ -184,27 +222,27 @@ import { TIMEFRAMES, PERIODS, TrendDetails } from '../../models/trading.models';
           <!-- VISTA SCANNER: Oportunidades + Gráfico del seleccionado -->
           
           <!-- Columna izquierda: Oportunidades -->
-          <div class="col-span-12 lg:col-span-4 flex flex-col gap-2 min-h-0">
+          <div class="col-span-12 md:col-span-5 lg:col-span-4 flex flex-col gap-2">
             <app-opportunities 
-              class="flex-1"
+              class="opportunities-resizable"
               (symbolSelected)="onOpportunitySelected($event)"
             />
           </div>
           
-          <!-- Columna central: Gráfico + Acción del seleccionado -->
-          <div class="col-span-12 lg:col-span-5 flex flex-col gap-2 min-h-0">
+          <!-- Columna central: Gráfico -->
+          <div class="col-span-12 md:col-span-7 lg:col-span-5 flex flex-col gap-2">
             <app-chart 
-              class="flex-1 min-h-0 resizable-panel"
+              class="chart-resizable"
               [highlightedLevel]="highlightedLevel()" 
               [patterns]="chartPatterns()"
               [showTrendLines]="trendLinesVisible()"
             />
           </div>
           
-          <!-- Columna derecha: Acción + Análisis resumido -->
-          <div class="col-span-12 lg:col-span-3 flex flex-col gap-2 min-h-0">
+          <!-- Columna derecha: Acción (oculto en móvil/tablet, visible en lg+) -->
+          <div class="hidden lg:flex col-span-12 lg:col-span-3 flex-col gap-2">
             <app-action-panel 
-              class="flex-1 min-h-0"
+              class="action-resizable"
               (levelHovered)="onLevelHovered($event)"
               (trendHovered)="onTrendHovered($event)"
               (openPosition)="openPositionTracker($event)"
@@ -216,24 +254,24 @@ import { TIMEFRAMES, PERIODS, TrendDetails } from '../../models/trading.models';
           <!-- VISTA ALERTAS: Gestión de alertas + Oportunidades -->
           
           <!-- Columna izquierda: Alertas -->
-          <div class="col-span-12 lg:col-span-4 flex flex-col gap-2 min-h-0">
-            <app-alerts class="flex-1" />
+          <div class="col-span-12 md:col-span-5 lg:col-span-4 flex flex-col gap-2">
+            <app-alerts class="alerts-resizable" />
           </div>
           
           <!-- Columna central: Gráfico -->
-          <div class="col-span-12 lg:col-span-5 flex flex-col gap-2 min-h-0">
+          <div class="col-span-12 md:col-span-7 lg:col-span-5 flex flex-col gap-2">
             <app-chart 
-              class="flex-1 min-h-0 resizable-panel"
+              class="chart-resizable"
               [highlightedLevel]="highlightedLevel()" 
               [patterns]="chartPatterns()"
               [showTrendLines]="trendLinesVisible()"
             />
           </div>
           
-          <!-- Columna derecha: Oportunidades resumidas -->
-          <div class="col-span-12 lg:col-span-3 flex flex-col gap-2 min-h-0">
+          <!-- Columna derecha: Oportunidades (oculto en móvil/tablet) -->
+          <div class="hidden lg:flex col-span-12 lg:col-span-3 flex-col gap-2">
             <app-opportunities 
-              class="flex-1"
+              class="opportunities-resizable"
               (symbolSelected)="onOpportunitySelected($event)"
             />
           </div>
@@ -278,47 +316,166 @@ import { TIMEFRAMES, PERIODS, TrendDetails } from '../../models/trading.models';
   styles: [`
     :host {
       display: block;
-      height: 100vh;
-      overflow: hidden;
+      min-height: 100vh;
+      overflow-y: auto;
     }
     
-    /* Paneles redimensionables */
-    .resizable-panel {
-      resize: both;
+    /* === COMPONENTES REDIMENSIONABLES === */
+    /* Estilo base compartido para todos */
+    .panel-resizable {
+      display: block;
+      resize: vertical;
       overflow: auto;
-      min-width: 150px;
-      min-height: 80px;
-      position: relative;
+      border: 1px solid rgba(75, 85, 99, 0.3);
+      border-radius: 8px;
+      transition: border-color 0.2s;
     }
     
-    /* El gráfico necesita más altura mínima */
-    app-chart.resizable-panel {
+    .panel-resizable:hover {
+      border-color: rgba(99, 102, 241, 0.4);
+    }
+    
+    /* Gráfico - color indigo */
+    app-chart.chart-resizable {
+      display: block;
       min-height: 200px;
+      height: 450px;
+      resize: vertical;
+      overflow: hidden;
+      border: 1px solid rgba(75, 85, 99, 0.3);
+      border-radius: 8px;
+    }
+    app-chart.chart-resizable::-webkit-resizer {
+      background: linear-gradient(135deg, transparent 50%, rgba(99, 102, 241, 0.5) 50%);
+      border-radius: 0 0 8px 0;
     }
     
-    .resizable-panel::after {
-      content: '';
-      position: absolute;
-      bottom: 0;
-      right: 0;
-      width: 12px;
-      height: 12px;
-      cursor: nwse-resize;
-      background: linear-gradient(135deg, transparent 50%, rgba(99, 102, 241, 0.3) 50%);
-      border-radius: 0 0 4px 0;
-      opacity: 0.5;
-      transition: opacity 0.2s;
+    /* Posiciones - color verde */
+    app-position-tracker.positions-resizable {
+      display: block;
+      min-height: 80px;
+      height: 150px;
+      resize: vertical;
+      overflow: auto;
+      border: 1px solid rgba(75, 85, 99, 0.3);
+      border-radius: 8px;
+    }
+    app-position-tracker.positions-resizable::-webkit-resizer {
+      background: linear-gradient(135deg, transparent 50%, rgba(34, 197, 94, 0.5) 50%);
+      border-radius: 0 0 8px 0;
     }
     
-    .resizable-panel:hover::after {
-      opacity: 1;
-      background: linear-gradient(135deg, transparent 50%, rgba(99, 102, 241, 0.6) 50%);
+    /* Explorador de mercado - color cyan */
+    app-market-explorer.explorer-resizable {
+      display: block;
+      min-height: 120px;
+      height: 280px;
+      resize: vertical;
+      overflow: auto;
+      border: 1px solid rgba(75, 85, 99, 0.3);
+      border-radius: 8px;
+    }
+    app-market-explorer.explorer-resizable::-webkit-resizer {
+      background: linear-gradient(135deg, transparent 50%, rgba(6, 182, 212, 0.5) 50%);
+      border-radius: 0 0 8px 0;
     }
     
-    .resizable-col {
-      resize: horizontal;
-      overflow: visible;
-      min-width: 150px;
+    /* Panel de acción - color amber */
+    app-action-panel.action-resizable {
+      display: block;
+      min-height: 100px;
+      height: 220px;
+      resize: vertical;
+      overflow: auto;
+      border: 1px solid rgba(75, 85, 99, 0.3);
+      border-radius: 8px;
+    }
+    app-action-panel.action-resizable::-webkit-resizer {
+      background: linear-gradient(135deg, transparent 50%, rgba(245, 158, 11, 0.5) 50%);
+      border-radius: 0 0 8px 0;
+    }
+    
+    /* Análisis - color purple */
+    app-analysis.analysis-resizable {
+      display: block;
+      min-height: 200px;
+      height: 500px;
+      resize: vertical;
+      overflow: auto;
+      border: 1px solid rgba(75, 85, 99, 0.3);
+      border-radius: 8px;
+    }
+    app-analysis.analysis-resizable::-webkit-resizer {
+      background: linear-gradient(135deg, transparent 50%, rgba(168, 85, 247, 0.5) 50%);
+      border-radius: 0 0 8px 0;
+    }
+    
+    /* Oportunidades - color emerald */
+    app-opportunities.opportunities-resizable {
+      display: block;
+      min-height: 150px;
+      height: 400px;
+      resize: vertical;
+      overflow: auto;
+      border: 1px solid rgba(75, 85, 99, 0.3);
+      border-radius: 8px;
+    }
+    app-opportunities.opportunities-resizable::-webkit-resizer {
+      background: linear-gradient(135deg, transparent 50%, rgba(16, 185, 129, 0.5) 50%);
+      border-radius: 0 0 8px 0;
+    }
+    
+    /* Alertas - color yellow */
+    app-alerts.alerts-resizable {
+      display: block;
+      min-height: 150px;
+      height: 400px;
+      resize: vertical;
+      overflow: auto;
+      border: 1px solid rgba(75, 85, 99, 0.3);
+      border-radius: 8px;
+    }
+    app-alerts.alerts-resizable::-webkit-resizer {
+      background: linear-gradient(135deg, transparent 50%, rgba(234, 179, 8, 0.5) 50%);
+      border-radius: 0 0 8px 0;
+    }
+    
+    /* Ocultar scrollbar en tabs móviles */
+    .scrollbar-hide {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    .scrollbar-hide::-webkit-scrollbar {
+      display: none;
+    }
+    
+    /* Details/Summary para paneles colapsables en móvil */
+    details.trading-card {
+      background: rgba(17, 17, 27, 0.95);
+      border: 1px solid rgba(75, 85, 99, 0.3);
+      border-radius: 8px;
+    }
+    details.trading-card summary {
+      list-style: none;
+    }
+    details.trading-card summary::-webkit-details-marker {
+      display: none;
+    }
+    details.trading-card summary::before {
+      content: '▶ ';
+      display: inline;
+    }
+    details.trading-card[open] summary::before {
+      content: '▼ ';
+    }
+    
+    /* Responsive: altura mínima del gráfico en móvil */
+    @media (max-width: 768px) {
+      app-chart.chart-resizable {
+        min-height: 250px !important;
+        height: 300px !important;
+        max-height: none;
+      }
     }
   `]
 })

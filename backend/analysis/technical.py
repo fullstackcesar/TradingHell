@@ -397,24 +397,67 @@ def detect_candle_patterns(df: pd.DataFrame) -> List[PatternDetection]:
             result = df.ta.cdl_pattern(name=func_name.replace('CDL_', '').lower())
             
             if result is not None and len(result) > 0:
-                last_value = result.iloc[-1].values[0] if hasattr(result.iloc[-1], 'values') else result.iloc[-1]
+                # Buscar en las últimas 15 velas, no solo la última
+                lookback = min(15, len(result))
                 
-                if last_value != 0:
-                    signal = default_signal
-                    if signal is None:
-                        signal = Signal.BUY if last_value > 0 else Signal.SELL
-                    
-                    patterns.append(PatternDetection(
-                        name=name,
-                        signal=signal,
-                        confidence=confidence,
-                        description=description,
-                        candle_index=-1
-                    ))
+                for i in range(lookback):
+                    idx = -(i + 1)  # -1, -2, -3, ... -15
+                    try:
+                        value = result.iloc[idx].values[0] if hasattr(result.iloc[idx], 'values') else result.iloc[idx]
+                        
+                        if value != 0:
+                            signal = default_signal
+                            if signal is None:
+                                signal = Signal.BUY if value > 0 else Signal.SELL
+                            
+                            # Índice real de la vela (desde el final)
+                            real_index = len(df) + idx  # Convertir a índice absoluto
+                            
+                            patterns.append(PatternDetection(
+                                name=name,
+                                signal=signal,
+                                confidence=confidence,
+                                description=description,
+                                candle_index=idx  # Índice relativo desde el final (-1, -2, etc.)
+                            ))
+                            # Solo tomar la ocurrencia más reciente de cada patrón
+                            break
+                    except (IndexError, KeyError):
+                        continue
         except Exception:
             continue
     
-    return patterns
+    # Filtrar patrones duplicados: si hay varios del mismo tipo, quedarse con el más reciente
+    # Pero permitir múltiples patrones diferentes cerca
+    filtered_patterns = []
+    seen_pattern_names = set()
+    used_indices = set()
+    
+    # Ordenar por índice (más reciente primero) y luego por confianza
+    patterns.sort(key=lambda p: (p.candle_index, -p.confidence), reverse=True)
+    
+    for p in patterns:
+        # No repetir el mismo tipo de patrón
+        if p.name in seen_pattern_names:
+            continue
+            
+        # Evitar patrones exactamente en la misma vela
+        idx = p.candle_index
+        if idx in used_indices:
+            continue
+        
+        filtered_patterns.append(p)
+        seen_pattern_names.add(p.name)
+        used_indices.add(idx)
+        
+        # Máximo 8 patrones diferentes
+        if len(filtered_patterns) >= 8:
+            break
+    
+    # Ordenar resultado por índice (más antiguo primero para el display)
+    filtered_patterns.sort(key=lambda p: p.candle_index)
+    
+    return filtered_patterns
 
 
 def find_support_resistance(df: pd.DataFrame, window: int = 20) -> Tuple[List[float], List[float]]:

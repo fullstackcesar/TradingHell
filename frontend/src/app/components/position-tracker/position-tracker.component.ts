@@ -32,8 +32,8 @@ export interface NewPositionData {
   standalone: true,
   imports: [DecimalPipe, FormsModule],
   template: `
-    <div class="trading-card h-full">
-      <div class="flex items-center justify-between mb-2">
+    <div class="trading-card h-full flex flex-col">
+      <div class="flex items-center justify-between mb-2 flex-shrink-0">
         <h3 class="text-xs font-bold flex items-center gap-2">
           📊 Mis Posiciones
           @if (positions().length > 0) {
@@ -50,12 +50,12 @@ export interface NewPositionData {
       </div>
       
       @if (positions().length === 0) {
-        <p class="text-gray-500 text-xs text-center py-2">
+        <p class="text-gray-500 text-xs text-center py-2 flex-1 flex items-center justify-center">
           No tienes posiciones abiertas.<br>
           Haz clic en "Añadir" para registrar una operación.
         </p>
       } @else {
-        <div class="space-y-1 overflow-auto max-h-24">
+        <div class="space-y-1 overflow-auto flex-1 min-h-0">
           @for (pos of positions(); track pos.id) {
             <div 
               class="p-2 rounded border text-xs cursor-pointer transition-all hover:bg-gray-700/50"
