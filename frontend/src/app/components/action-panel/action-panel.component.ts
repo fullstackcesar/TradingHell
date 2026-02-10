@@ -6,6 +6,7 @@
 import { Component, inject, computed, signal, output } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { TradingService } from '../../services/trading.service';
+import { TrendDetails } from '../../models/trading.models';
 
 @Component({
   selector: 'app-action-panel',
@@ -147,6 +148,37 @@ import { TradingService } from '../../services/trading.service';
             </div>
           }
 
+          <!-- Tendencia con hover para mostrar SMAs -->
+          @if (trendInfo()) {
+            <div 
+              class="p-2 rounded-lg cursor-pointer transition-all"
+              [class]="trendInfo()!.trend === 'ALCISTA' 
+                ? 'bg-green-500/10 border border-green-500/50 hover:bg-green-500/20' 
+                : trendInfo()!.trend === 'BAJISTA' 
+                  ? 'bg-red-500/10 border border-red-500/50 hover:bg-red-500/20' 
+                  : 'bg-yellow-500/10 border border-yellow-500/50 hover:bg-yellow-500/20'"
+              (mouseenter)="hoverTrend()"
+              (mouseleave)="unhoverTrend()">
+              <div class="flex justify-between items-center">
+                <span class="text-xs font-medium" [class]="trendTextColor()">
+                  {{ trendEmoji() }} Tendencia
+                  <span class="text-gray-500 text-xs ml-1">(hover = ver en gráfico)</span>
+                </span>
+                <span class="text-sm font-bold" [class]="trendTextColor()">
+                  {{ trendInfo()!.trend }}
+                </span>
+              </div>
+              <div class="text-xs text-gray-400 mt-1">
+                Fuerza: {{ trendInfo()!.strength | number:'1.0-0' }}% 
+                @if (trendInfo()!.price_change) {
+                  <span [class]="trendInfo()!.price_change.total > 0 ? 'text-green-400' : 'text-red-400'">
+                    ({{ trendInfo()!.price_change.total > 0 ? '+' : '' }}{{ trendInfo()!.price_change.total | number:'1.1-1' }}%)
+                  </span>
+                }
+              </div>
+            </div>
+          }
+
           <!-- Razones -->
           <div class="p-2 rounded-lg bg-gray-800/30 border border-gray-700">
             <p class="text-xs font-medium text-gray-300 mb-1">📋 ¿Por qué {{ action() }}?</p>
@@ -220,6 +252,9 @@ export class ActionPanelComponent {
   // Outputs para comunicar con el gráfico
   readonly levelHovered = output<{ type: string; price: number } | null>();
   
+  // Output para hover en tendencia (muestra SMAs en gráfico)
+  readonly trendHovered = output<TrendDetails | null>();
+  
   // Output para abrir posición
   readonly openPosition = output<{
     symbol: string;
@@ -245,7 +280,27 @@ export class ActionPanelComponent {
   readonly analysis = computed(() => this.tradingService.analysis.value());
   readonly hasStrategy = computed(() => !!this.analysis());
   
-  readonly currentPrice = computed(() => this.analysis()?.current_price ?? 0);
+  // Usa precio en tiempo real si está disponible, sino el del análisis
+  readonly currentPrice = computed(() => 
+    this.tradingService.realtimePrice() || (this.analysis()?.current_price ?? 0)
+  );
+  
+  // Información de tendencia
+  readonly trendInfo = computed(() => this.analysis()?.trend_details || null);
+  
+  readonly trendEmoji = computed(() => {
+    const trend = this.trendInfo()?.trend;
+    if (trend === 'ALCISTA') return '📈';
+    if (trend === 'BAJISTA') return '📉';
+    return '➡️';
+  });
+  
+  readonly trendTextColor = computed(() => {
+    const trend = this.trendInfo()?.trend;
+    if (trend === 'ALCISTA') return 'text-green-400';
+    if (trend === 'BAJISTA') return 'text-red-400';
+    return 'text-yellow-400';
+  });
   
   readonly action = computed(() => {
     const signal = this.analysis()?.overall_signal;
@@ -582,6 +637,18 @@ export class ActionPanelComponent {
   unhoverLevel(): void {
     this.hoveredLevel.set(null);
     this.levelHovered.emit(null);
+  }
+  
+  // Hover sobre tendencia (muestra SMAs en el gráfico)
+  hoverTrend(): void {
+    const trendDetails = this.trendInfo();
+    if (trendDetails) {
+      this.trendHovered.emit(trendDetails);
+    }
+  }
+  
+  unhoverTrend(): void {
+    this.trendHovered.emit(null);
   }
   
   onConfirmPosition(): void {

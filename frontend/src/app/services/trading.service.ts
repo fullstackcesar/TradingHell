@@ -47,6 +47,9 @@ export class TradingService {
   readonly isLoading = signal<boolean>(false);
   readonly error = signal<string | null>(null);
   
+  // Precio en tiempo real (actualizado independientemente del análisis)
+  readonly realtimePrice = signal<number | null>(null);
+  
   // Modo tiempo real (para no mostrar barra de progreso)
   readonly isRealTimeMode = signal<boolean>(false);
   
@@ -240,6 +243,36 @@ export class TradingService {
   refresh(): void {
     this.chartData.reload();
     this.analysis.reload();
+  }
+  
+  /**
+   * Refresca solo el análisis (sin velas)
+   */
+  refreshAnalysis(): void {
+    this.analysis.reload();
+  }
+  
+  /**
+   * Refresca solo el precio en tiempo real (sin análisis ni velas)
+   */
+  async refreshPriceOnly(): Promise<void> {
+    const symbol = this.currentSymbol();
+    const isCrypto = isCryptoSymbol(symbol);
+    
+    if (!isCrypto) {
+      // Para acciones, no tenemos endpoint de precio rápido
+      return;
+    }
+    
+    try {
+      const response = await fetch(`${API_BASE}/binance/price/${symbol}`);
+      if (response.ok) {
+        const data = await response.json();
+        this.realtimePrice.set(parseFloat(data.price));
+      }
+    } catch (e) {
+      console.error('Error obteniendo precio:', e);
+    }
   }
   
   /**

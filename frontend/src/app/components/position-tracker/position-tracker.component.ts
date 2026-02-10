@@ -58,8 +58,9 @@ export interface NewPositionData {
         <div class="space-y-1 overflow-auto max-h-24">
           @for (pos of positions(); track pos.id) {
             <div 
-              class="p-2 rounded border text-xs"
-              [class]="getPositionClass(pos)">
+              class="p-2 rounded border text-xs cursor-pointer transition-all hover:bg-gray-700/50"
+              [class]="getPositionClass(pos)"
+              (click)="openPositionDetails(pos)">
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
                   <span class="font-bold">{{ pos.symbol }}</span>
@@ -72,7 +73,7 @@ export interface NewPositionData {
                     {{ getPnLPercent(pos) | number:'1.2-2' }}%
                   </span>
                   <button 
-                    (click)="closePositionClick(pos)"
+                    (click)="closePositionClick(pos); $event.stopPropagation()"
                     class="p-0.5 hover:bg-gray-700 rounded"
                     title="Cerrar posición">
                     ❌
@@ -104,6 +105,109 @@ export interface NewPositionData {
               }
             </div>
           }
+        </div>
+      }
+      
+      <!-- Modal Detalles de Posición -->
+      @if (selectedPosition()) {
+        <div class="fixed inset-0 bg-black/80 flex items-center justify-center z-50" (click)="closePositionModal()">
+          <div class="bg-gray-900 border border-indigo-500 rounded-lg p-5 w-96 max-h-[80vh] overflow-auto" (click)="$event.stopPropagation()">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-lg font-bold">
+                {{ selectedPosition()!.type === 'LONG' ? '📈' : '📉' }} {{ selectedPosition()!.symbol }}
+              </h3>
+              <button 
+                (click)="closePositionModal()"
+                class="text-gray-400 hover:text-white text-xl">
+                ✕
+              </button>
+            </div>
+            
+            <div class="space-y-4">
+              <!-- Estado actual -->
+              <div class="p-3 rounded-lg text-center"
+                   [class]="getPnLPercent(selectedPosition()!) > 0 ? 'bg-green-500/20' : 'bg-red-500/20'">
+                <p class="text-xs text-gray-400">P/L Actual</p>
+                <p class="text-2xl font-bold" [class]="getPnLColor(selectedPosition()!)">
+                  {{ getPnLPercent(selectedPosition()!) > 0 ? '+' : '' }}{{ getPnLPercent(selectedPosition()!) | number:'1.2-2' }}%
+                </p>
+              </div>
+              
+              <!-- Precios -->
+              <div class="grid grid-cols-3 gap-2 text-center text-sm">
+                <div class="p-2 bg-gray-800 rounded">
+                  <p class="text-xs text-gray-400">Entrada</p>
+                  <p class="font-bold text-blue-400">
+                    <span>$</span>{{ selectedPosition()!.entryPrice | number:'1.2-2' }}
+                  </p>
+                </div>
+                <div class="p-2 bg-gray-800 rounded">
+                  <p class="text-xs text-gray-400">🛑 SL</p>
+                  <p class="font-bold text-red-400">
+                    <span>$</span>{{ selectedPosition()!.stopLoss | number:'1.2-2' }}
+                  </p>
+                </div>
+                <div class="p-2 bg-gray-800 rounded">
+                  <p class="text-xs text-gray-400">💰 TP</p>
+                  <p class="font-bold text-green-400">
+                    <span>$</span>{{ selectedPosition()!.takeProfit | number:'1.2-2' }}
+                  </p>
+                </div>
+              </div>
+              
+              <!-- Precio actual -->
+              <div class="p-3 bg-indigo-600/20 rounded-lg text-center">
+                <p class="text-xs text-gray-400">Precio Actual</p>
+                <p class="text-xl font-bold text-indigo-400">
+                  <span>$</span>{{ currentPrice() | number:'1.2-2' }}
+                </p>
+              </div>
+              
+              <!-- Recomendación dinámica -->
+              <div class="p-3 rounded-lg border" [class]="getRecommendationClass()">
+                <p class="text-xs font-bold mb-2">{{ getRecommendationEmoji() }} Recomendación</p>
+                <p class="text-sm">{{ getRecommendation() }}</p>
+              </div>
+              
+              <!-- Análisis técnico actual -->
+              @if (currentAnalysis()) {
+                <div class="p-3 bg-gray-800/50 rounded-lg border border-gray-700">
+                  <p class="text-xs font-bold text-gray-300 mb-2">📊 Análisis Actual</p>
+                  <div class="space-y-1 text-sm">
+                    <p>
+                      <span class="text-gray-400">Tendencia:</span>
+                      <span [class]="currentAnalysis()!.trend === 'ALCISTA' ? 'text-green-400' : currentAnalysis()!.trend === 'BAJISTA' ? 'text-red-400' : 'text-yellow-400'">
+                        {{ currentAnalysis()!.trend }}
+                      </span>
+                    </p>
+                    <p>
+                      <span class="text-gray-400">Señal:</span>
+                      <span [class]="currentAnalysis()!.overall_signal.includes('COMPRA') ? 'text-green-400' : currentAnalysis()!.overall_signal.includes('VENTA') ? 'text-red-400' : 'text-yellow-400'">
+                        {{ currentAnalysis()!.overall_signal }}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+              }
+              
+              <!-- Notas -->
+              @if (selectedPosition()!.notes) {
+                <div class="p-3 bg-gray-800/30 rounded-lg border border-gray-700">
+                  <p class="text-xs text-gray-400 mb-1">📝 Notas:</p>
+                  <p class="text-sm">{{ selectedPosition()!.notes }}</p>
+                </div>
+              }
+              
+              <!-- Acciones -->
+              <div class="flex gap-2">
+                <button 
+                  (click)="closePositionClick(selectedPosition()!); closePositionModal()"
+                  class="flex-1 py-2 bg-red-600 hover:bg-red-700 rounded text-sm font-bold">
+                  ❌ Cerrar Posición
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       }
       
@@ -213,9 +317,13 @@ export class PositionTrackerComponent {
   
   readonly positions = signal<OpenPosition[]>([]);
   readonly showAddModal = signal(false);
+  readonly selectedPosition = signal<OpenPosition | null>(null);
   
   readonly currentSymbol = computed(() => this.tradingService.currentSymbol());
-  readonly currentPrice = computed(() => this.tradingService.analysis.value()?.current_price ?? 0);
+  readonly currentPrice = computed(() => 
+    this.tradingService.realtimePrice() || (this.tradingService.analysis.value()?.current_price ?? 0)
+  );
+  readonly currentAnalysis = computed(() => this.tradingService.analysis.value());
   
   newPosition = {
     symbol: '',
@@ -411,5 +519,98 @@ export class PositionTrackerComponent {
     } else if ('Notification' in window && Notification.permission !== 'denied') {
       Notification.requestPermission();
     }
+  }
+  
+  // Métodos para el modal de detalles
+  openPositionDetails(pos: OpenPosition): void {
+    this.selectedPosition.set(pos);
+  }
+  
+  closePositionModal(): void {
+    this.selectedPosition.set(null);
+  }
+  
+  getRecommendation(): string {
+    const pos = this.selectedPosition();
+    if (!pos) return '';
+    
+    const price = this.currentPrice();
+    const pnl = this.getPnLPercent(pos);
+    const analysis = this.currentAnalysis();
+    
+    // Verificar si tocó SL o TP
+    if (pos.type === 'LONG') {
+      if (price >= pos.takeProfit) {
+        return '🎉 ¡Felicidades! Has alcanzado tu Take Profit. CIERRA AHORA para asegurar ganancias.';
+      }
+      if (price <= pos.stopLoss) {
+        return '⚠️ Se ha tocado el Stop Loss. CIERRA INMEDIATAMENTE para limitar pérdidas.';
+      }
+    } else {
+      if (price <= pos.takeProfit) {
+        return '🎉 ¡Felicidades! Has alcanzado tu Take Profit. CIERRA AHORA para asegurar ganancias.';
+      }
+      if (price >= pos.stopLoss) {
+        return '⚠️ Se ha tocado el Stop Loss. CIERRA INMEDIATAMENTE para limitar pérdidas.';
+      }
+    }
+    
+    // Recomendaciones basadas en P/L
+    if (pnl > 5) {
+      if (analysis?.trend === 'ALCISTA' && pos.type === 'LONG') {
+        return '✅ Buenas ganancias y tendencia a favor. Considera mover tu Stop Loss al punto de entrada para asegurar profits (trailing stop).';
+      }
+      if (analysis?.trend === 'BAJISTA' && pos.type === 'SHORT') {
+        return '✅ Buenas ganancias y tendencia a favor. Considera mover tu Stop Loss al punto de entrada para asegurar profits.';
+      }
+      return '⚡ Tienes ganancias significativas. Considera tomar parciales o ajustar el Stop Loss para protegerlas.';
+    }
+    
+    if (pnl < -3) {
+      if (analysis?.trend === (pos.type === 'LONG' ? 'BAJISTA' : 'ALCISTA')) {
+        return '🔴 Estás en pérdida y la tendencia está en contra. Considera cerrar para evitar más pérdidas.';
+      }
+      return '⚠️ Posición en pérdida. Mantén la calma, tu Stop Loss protege el capital. No muevas el SL para "dar más espacio".';
+    }
+    
+    if (Math.abs(pnl) < 1) {
+      return '↔️ Posición en punto de equilibrio. Paciencia, deja que el mercado se mueva. No hagas nada impulsivo.';
+    }
+    
+    if (pnl > 0 && pnl <= 3) {
+      return '🟢 Pequeñas ganancias. Mantén la posición según tu estrategia original. No cierres prematuramente por miedo.';
+    }
+    
+    return '👀 Monitorea la posición. Sigue tu plan de trading y no te dejes llevar por las emociones.';
+  }
+  
+  getRecommendationClass(): string {
+    const pos = this.selectedPosition();
+    if (!pos) return 'bg-gray-800 border-gray-600';
+    
+    const price = this.currentPrice();
+    
+    if (pos.type === 'LONG') {
+      if (price >= pos.takeProfit) return 'bg-green-500/20 border-green-500';
+      if (price <= pos.stopLoss) return 'bg-red-500/20 border-red-500';
+    } else {
+      if (price <= pos.takeProfit) return 'bg-green-500/20 border-green-500';
+      if (price >= pos.stopLoss) return 'bg-red-500/20 border-red-500';
+    }
+    
+    const pnl = this.getPnLPercent(pos);
+    if (pnl > 5) return 'bg-green-500/10 border-green-500/50';
+    if (pnl < -3) return 'bg-red-500/10 border-red-500/50';
+    return 'bg-indigo-500/10 border-indigo-500/50';
+  }
+  
+  getRecommendationEmoji(): string {
+    const pos = this.selectedPosition();
+    if (!pos) return '💡';
+    
+    const pnl = this.getPnLPercent(pos);
+    if (pnl > 5) return '🎯';
+    if (pnl < -3) return '⚠️';
+    return '💡';
   }
 }

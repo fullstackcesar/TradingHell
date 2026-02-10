@@ -1,5 +1,12 @@
 """
-Análisis técnico: indicadores, patrones de velas y señales.
+Análisis técnico basado en los principios de John J. Murphy
+("Technical Analysis of the Financial Markets")
+
+Principios clave implementados:
+1. Dow Theory: Tendencia = higher peaks/troughs (alcista) o lower peaks/troughs (bajista)
+2. El volumen debe confirmar la tendencia
+3. La tendencia persiste hasta señales definitivas de reversión
+4. Múltiples timeframes: primary, secondary, minor trends
 """
 
 import pandas as pd
@@ -66,6 +73,9 @@ class AnalysisResult:
     # Resumen
     summary: str
     recommendations: List[str]
+    
+    # Detalles de tendencia (opcional, al final)
+    trend_details: Dict = None
 
 
 def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -128,6 +138,204 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df['cci'] = ta.cci(df['high'], df['low'], df['close'], length=20)
     
     return df
+
+
+def identify_peaks_troughs(df: pd.DataFrame, order: int = 5) -> Tuple[List[Tuple[int, float]], List[Tuple[int, float]]]:
+    """
+    Identifica máximos (peaks) y mínimos (troughs) locales.
+    Basado en Dow Theory: necesitamos identificar swing highs y swing lows.
+    
+    Args:
+        df: DataFrame con OHLCV
+        order: Número de velas a cada lado para confirmar un extremo
+        
+    Returns:
+        (peaks, troughs) - Listas de tuplas (índice, precio)
+    """
+    df = df.copy()
+    df.columns = [col.lower() if isinstance(col, str) else col for col in df.columns]
+    
+    highs = df['high'].values
+    lows = df['low'].values
+    n = len(df)
+    
+    peaks = []  # Swing highs
+    troughs = []  # Swing lows
+    
+    for i in range(order, n - order):
+        # Buscar swing high (máximo local)
+        is_peak = True
+        for j in range(1, order + 1):
+            if highs[i] <= highs[i - j] or highs[i] <= highs[i + j]:
+                is_peak = False
+                break
+        if is_peak:
+            peaks.append((i, highs[i]))
+        
+        # Buscar swing low (mínimo local)
+        is_trough = True
+        for j in range(1, order + 1):
+            if lows[i] >= lows[i - j] or lows[i] >= lows[i + j]:
+                is_trough = False
+                break
+        if is_trough:
+            troughs.append((i, lows[i]))
+    
+    return peaks, troughs
+
+
+def analyze_dow_trend(peaks: List[Tuple[int, float]], troughs: List[Tuple[int, float]], 
+                       current_price: float) -> Tuple[str, Dict]:
+    """
+    Analiza la tendencia según Dow Theory.
+    
+    Dow Theory (Murphy, Chapter 2):
+    - Uptrend: cada peak sucesivo es más alto que el anterior Y cada trough es más alto que el anterior
+    - Downtrend: cada peak sucesivo es más bajo que el anterior Y cada trough es más bajo que el anterior
+    - La tendencia persiste hasta que hay señales definitivas de reversión
+    
+    Args:
+        peaks: Lista de (índice, precio) de máximos
+        troughs: Lista de (índice, precio) de mínimos
+        current_price: Precio actual
+        
+    Returns:
+        (tendencia, detalles)
+    """
+    details = {
+        'peaks': peaks[-4:] if len(peaks) >= 4 else peaks,
+        'troughs': troughs[-4:] if len(troughs) >= 4 else troughs,
+        'pattern': 'indefinido',
+        'signals': []
+    }
+    
+    if len(peaks) < 2 or len(troughs) < 2:
+        return "INDEFINIDO", details
+    
+    # Tomar los últimos peaks y troughs para análisis
+    recent_peaks = peaks[-4:] if len(peaks) >= 4 else peaks
+    recent_troughs = troughs[-4:] if len(troughs) >= 4 else troughs
+    
+    # Analizar secuencia de peaks (Higher Highs vs Lower Highs)
+    higher_highs = 0
+    lower_highs = 0
+    for i in range(1, len(recent_peaks)):
+        if recent_peaks[i][1] > recent_peaks[i-1][1]:
+            higher_highs += 1
+        elif recent_peaks[i][1] < recent_peaks[i-1][1]:
+            lower_highs += 1
+    
+    # Analizar secuencia de troughs (Higher Lows vs Lower Lows)
+    higher_lows = 0
+    lower_lows = 0
+    for i in range(1, len(recent_troughs)):
+        if recent_troughs[i][1] > recent_troughs[i-1][1]:
+            higher_lows += 1
+        elif recent_troughs[i][1] < recent_troughs[i-1][1]:
+            lower_lows += 1
+    
+    # Dow Theory: Uptrend = HH + HL, Downtrend = LH + LL
+    total_peaks = len(recent_peaks) - 1
+    total_troughs = len(recent_troughs) - 1
+    
+    hh_pct = (higher_highs / total_peaks * 100) if total_peaks > 0 else 0
+    lh_pct = (lower_highs / total_peaks * 100) if total_peaks > 0 else 0
+    hl_pct = (higher_lows / total_troughs * 100) if total_troughs > 0 else 0
+    ll_pct = (lower_lows / total_troughs * 100) if total_troughs > 0 else 0
+    
+    details['higher_highs'] = higher_highs
+    details['lower_highs'] = lower_highs
+    details['higher_lows'] = higher_lows
+    details['lower_lows'] = lower_lows
+    
+    # Determinar tendencia según Dow
+    if higher_highs >= lower_highs and higher_lows >= lower_lows and (higher_highs > 0 or higher_lows > 0):
+        # Uptrend: Higher Highs + Higher Lows
+        if higher_highs > 0 and higher_lows > 0:
+            details['pattern'] = 'Higher Highs + Higher Lows (ALCISTA FUERTE)'
+            details['signals'].append("📈 Máximos ascendentes (Dow Theory)")
+            details['signals'].append("📈 Mínimos ascendentes (Dow Theory)")
+            return "ALCISTA", details
+        else:
+            details['pattern'] = 'Parcialmente alcista'
+            return "ALCISTA_DEBIL", details
+            
+    elif lower_highs >= higher_highs and lower_lows >= higher_lows and (lower_highs > 0 or lower_lows > 0):
+        # Downtrend: Lower Highs + Lower Lows
+        if lower_highs > 0 and lower_lows > 0:
+            details['pattern'] = 'Lower Highs + Lower Lows (BAJISTA FUERTE)'
+            details['signals'].append("📉 Máximos descendentes (Dow Theory)")
+            details['signals'].append("📉 Mínimos descendentes (Dow Theory)")
+            return "BAJISTA", details
+        else:
+            details['pattern'] = 'Parcialmente bajista'
+            return "BAJISTA_DEBIL", details
+    
+    # Patrones mixtos (posible reversión o consolidación)
+    elif higher_highs > 0 and lower_lows > 0:
+        details['pattern'] = 'Divergencia: HH pero LL (posible techo)'
+        details['signals'].append("⚠️ Divergencia en estructura - posible cambio de tendencia")
+        return "LATERAL", details
+    elif lower_highs > 0 and higher_lows > 0:
+        details['pattern'] = 'Divergencia: LH pero HL (posible suelo)'
+        details['signals'].append("⚠️ Posible formación de suelo")
+        return "LATERAL", details
+    else:
+        details['pattern'] = 'Consolidación lateral'
+        return "LATERAL", details
+
+
+def confirm_volume_trend(df: pd.DataFrame, trend: str) -> Tuple[bool, str]:
+    """
+    Verifica si el volumen confirma la tendencia.
+    
+    Murphy, Chapter 7 - Volume Must Confirm the Trend:
+    - En uptrend: volumen aumenta cuando precio sube, disminuye cuando precio baja
+    - En downtrend: volumen aumenta cuando precio baja, disminuye cuando precio rally
+    
+    Args:
+        df: DataFrame con OHLCV
+        trend: Tendencia detectada
+        
+    Returns:
+        (confirma, descripción)
+    """
+    df = df.copy()
+    df.columns = [col.lower() if isinstance(col, str) else col for col in df.columns]
+    
+    n = len(df)
+    if n < 20:
+        return True, "Datos insuficientes para análisis de volumen"
+    
+    # Dividir en segmentos y analizar correlación precio-volumen
+    price_changes = df['close'].diff().iloc[-20:]
+    volumes = df['volume'].iloc[-20:]
+    
+    up_days = price_changes > 0
+    down_days = price_changes < 0
+    
+    avg_vol_up = volumes[up_days].mean() if up_days.sum() > 0 else 0
+    avg_vol_down = volumes[down_days].mean() if down_days.sum() > 0 else 0
+    
+    if trend in ["ALCISTA", "ALCISTA_DEBIL"]:
+        # En uptrend, volumen debe ser mayor en días alcistas
+        if avg_vol_up > avg_vol_down * 1.1:
+            return True, f"✅ Volumen confirma tendencia alcista (Vol↑ en subidas: {avg_vol_up/1e6:.1f}M > Vol↓ en bajadas: {avg_vol_down/1e6:.1f}M)"
+        elif avg_vol_down > avg_vol_up * 1.2:
+            return False, f"⚠️ Volumen NO confirma: mayor volumen en bajadas ({avg_vol_down/1e6:.1f}M > {avg_vol_up/1e6:.1f}M)"
+        else:
+            return True, "Volumen neutral"
+            
+    elif trend in ["BAJISTA", "BAJISTA_DEBIL"]:
+        # En downtrend, volumen debe ser mayor en días bajistas
+        if avg_vol_down > avg_vol_up * 1.1:
+            return True, f"✅ Volumen confirma tendencia bajista (Vol↓ en bajadas: {avg_vol_down/1e6:.1f}M > Vol↑ en subidas: {avg_vol_up/1e6:.1f}M)"
+        elif avg_vol_up > avg_vol_down * 1.2:
+            return False, f"⚠️ Volumen NO confirma: mayor volumen en subidas ({avg_vol_up/1e6:.1f}M > {avg_vol_down/1e6:.1f}M)"
+        else:
+            return True, "Volumen neutral"
+    
+    return True, "Tendencia lateral - análisis de volumen no aplica"
 
 
 def detect_candle_patterns(df: pd.DataFrame) -> List[PatternDetection]:
@@ -393,70 +601,219 @@ def analyze_indicators(df: pd.DataFrame) -> List[IndicatorResult]:
     return results
 
 
-def determine_trend(df: pd.DataFrame) -> Tuple[str, float]:
+def determine_trend(df: pd.DataFrame) -> Tuple[str, float, Dict]:
     """
-    Determina la tendencia actual.
+    Determina la tendencia actual usando los principios de Murphy/Dow Theory.
+    
+    Metodología basada en "Technical Analysis of the Financial Markets" (J.J. Murphy):
+    
+    1. DOW THEORY (Principio fundamental):
+       - Uptrend = Higher Peaks + Higher Troughs (máximos y mínimos ascendentes)
+       - Downtrend = Lower Peaks + Lower Troughs (máximos y mínimos descendentes)
+       - "La tendencia persiste hasta que da señales definitivas de reversión"
+    
+    2. CONFIRMACIÓN DE VOLUMEN:
+       - En uptrend: volumen aumenta en subidas, disminuye en bajadas
+       - En downtrend: volumen aumenta en bajadas, disminuye en subidas
+    
+    3. MEDIAS MÓVILES como confirmación secundaria:
+       - Precio vs SMA 200 (tendencia de largo plazo)
+       - Cruces de medias
     
     Args:
         df: DataFrame con indicadores
         
     Returns:
-        (tendencia, fuerza 0-100)
+        (tendencia, fuerza 0-100, detalles)
     """
+    details = {
+        'bullish_factors': [],
+        'bearish_factors': [],
+        'neutral_factors': [],
+        'dow_theory': {},
+        'volume_analysis': {},
+        'sma_values': {},
+        'price_change': {}
+    }
+    
     last = df.iloc[-1]
+    n = len(df)
     
     close = last.get('close', 0)
-    sma_20 = last.get('sma_20', 0)
-    sma_50 = last.get('sma_50', 0)
-    sma_200 = last.get('sma_200', 0)
+    sma_20 = last.get('sma_20')
+    sma_50 = last.get('sma_50')
+    sma_200 = last.get('sma_200')
     adx = last.get('adx', 25)
     
-    bullish_score = 0
-    bearish_score = 0
+    # Guardar valores de SMAs para visualización
+    if not pd.isna(sma_20):
+        details['sma_values']['sma_20'] = float(sma_20)
+    if not pd.isna(sma_50):
+        details['sma_values']['sma_50'] = float(sma_50)
+    if not pd.isna(sma_200):
+        details['sma_values']['sma_200'] = float(sma_200)
     
-    # Posición respecto a medias
-    if not pd.isna(sma_20) and close > sma_20:
-        bullish_score += 1
-    else:
-        bearish_score += 1
+    # Calcular cambio de precio del período
+    period_start = df['close'].iloc[0]
+    price_change_pct = ((close - period_start) / period_start) * 100
+    period_high = df['high'].max()
+    period_low = df['low'].min()
+    drop_from_high = ((close - period_high) / period_high) * 100
+    rise_from_low = ((close - period_low) / period_low) * 100
     
-    if not pd.isna(sma_50) and close > sma_50:
-        bullish_score += 1
-    else:
-        bearish_score += 1
+    details['price_change'] = {
+        'total': round(price_change_pct, 2),
+        'start_price': float(period_start),
+        'end_price': float(close),
+        'drop_from_high': round(drop_from_high, 2),
+        'rise_from_low': round(rise_from_low, 2)
+    }
     
-    if not pd.isna(sma_200) and close > sma_200:
-        bullish_score += 1
-    else:
-        bearish_score += 1
+    # ========== 1. DOW THEORY - ANÁLISIS DE PEAKS Y TROUGHS ==========
+    # Identificar máximos y mínimos locales (swing highs/lows)
+    order = max(3, n // 20)  # Ajustar sensibilidad según datos disponibles
+    peaks, troughs = identify_peaks_troughs(df, order=order)
     
-    # Cruce de medias
-    if not pd.isna(sma_20) and not pd.isna(sma_50):
-        if sma_20 > sma_50:
-            bullish_score += 1
+    # Analizar estructura según Dow Theory
+    dow_trend, dow_details = analyze_dow_trend(peaks, troughs, close)
+    details['dow_theory'] = dow_details
+    
+    # ========== 2. CONFIRMACIÓN DE VOLUMEN (Murphy Chapter 7) ==========
+    volume_confirms, volume_msg = confirm_volume_trend(df, dow_trend)
+    details['volume_analysis'] = {
+        'confirms': volume_confirms,
+        'message': volume_msg
+    }
+    
+    # ========== 3. ANÁLISIS DE MEDIAS MÓVILES ==========
+    ma_bullish = 0
+    ma_bearish = 0
+    
+    # Precio vs SMA 200 (tendencia de largo plazo - Murphy Chapter 9)
+    if not pd.isna(sma_200):
+        if close > sma_200:
+            ma_bullish += 3
+            details['bullish_factors'].append(f"✅ Precio ({close:.2f}) por encima de SMA 200 ({sma_200:.2f}) - Tendencia largo plazo ALCISTA")
         else:
-            bearish_score += 1
+            ma_bearish += 3
+            details['bearish_factors'].append(f"❌ Precio ({close:.2f}) por debajo de SMA 200 ({sma_200:.2f}) - Tendencia largo plazo BAJISTA")
     
-    # MACD
-    macd = last.get('macd', 0)
-    if not pd.isna(macd):
-        if macd > 0:
-            bullish_score += 1
+    # Precio vs SMA 50 (tendencia intermedia)
+    if not pd.isna(sma_50):
+        if close > sma_50:
+            ma_bullish += 2
+            details['bullish_factors'].append(f"📈 Precio por encima de SMA 50")
         else:
-            bearish_score += 1
+            ma_bearish += 2
+            details['bearish_factors'].append(f"📉 Precio por debajo de SMA 50")
     
-    # Determinar tendencia
-    if bullish_score > bearish_score + 1:
-        trend = "ALCISTA"
-    elif bearish_score > bullish_score + 1:
+    # Cruce de medias (Golden Cross / Death Cross)
+    if not pd.isna(sma_50) and not pd.isna(sma_200):
+        if sma_50 > sma_200:
+            ma_bullish += 2
+            details['bullish_factors'].append("🌟 Golden Cross: SMA 50 > SMA 200")
+        else:
+            ma_bearish += 2
+            details['bearish_factors'].append("💀 Death Cross: SMA 50 < SMA 200")
+    
+    # ========== 4. DETERMINACIÓN FINAL DE TENDENCIA ==========
+    # Prioridad: 
+    # 1. Cambio de precio muy significativo (>15%) -> tendencia automática
+    # 2. Dow Theory (peaks/troughs) como factor principal
+    # 3. Confirmación de volumen puede invalidar
+    # 4. Medias móviles como confirmación
+    
+    # Caso especial: Cambio de precio extremo
+    if price_change_pct <= -15:
         trend = "BAJISTA"
+        details['bearish_factors'].insert(0, f"📉 CAÍDA FUERTE: {abs(price_change_pct):.1f}% en el período")
+        strength = min(100, abs(price_change_pct) * 3)
+        
+    elif price_change_pct >= 15:
+        trend = "ALCISTA"
+        details['bullish_factors'].insert(0, f"📈 SUBIDA FUERTE: {price_change_pct:.1f}% en el período")
+        strength = min(100, price_change_pct * 3)
+        
     else:
-        trend = "LATERAL"
+        # Usar Dow Theory como base
+        if dow_trend == "ALCISTA":
+            if volume_confirms and ma_bullish > ma_bearish:
+                trend = "ALCISTA"
+                details['bullish_factors'].extend(dow_details.get('signals', []))
+                details['bullish_factors'].append(volume_msg)
+            elif not volume_confirms:
+                trend = "ALCISTA"  # Mantener pero advertir
+                details['neutral_factors'].append("⚠️ Tendencia alcista pero volumen no confirma")
+            else:
+                trend = "ALCISTA"
+                details['bullish_factors'].extend(dow_details.get('signals', []))
+                
+        elif dow_trend == "BAJISTA":
+            if volume_confirms and ma_bearish > ma_bullish:
+                trend = "BAJISTA"
+                details['bearish_factors'].extend(dow_details.get('signals', []))
+                details['bearish_factors'].append(volume_msg)
+            elif not volume_confirms:
+                trend = "BAJISTA"  # Mantener pero advertir
+                details['neutral_factors'].append("⚠️ Tendencia bajista pero volumen no confirma")
+            else:
+                trend = "BAJISTA"
+                details['bearish_factors'].extend(dow_details.get('signals', []))
+                
+        elif dow_trend in ["ALCISTA_DEBIL", "BAJISTA_DEBIL"]:
+            # Usar medias móviles para decidir
+            if ma_bullish > ma_bearish + 2:
+                trend = "ALCISTA"
+            elif ma_bearish > ma_bullish + 2:
+                trend = "BAJISTA"
+            else:
+                trend = "LATERAL"
+            details['neutral_factors'].append(f"Señal débil de Dow Theory: {dow_details.get('pattern', '')}")
+            
+        else:
+            # Dow Theory lateral o indefinido - usar cambio de precio y MAs
+            if price_change_pct > 5 and ma_bullish > ma_bearish:
+                trend = "ALCISTA"
+                details['bullish_factors'].append(f"📈 Subida moderada ({price_change_pct:.1f}%) + MAs alcistas")
+            elif price_change_pct < -5 and ma_bearish > ma_bullish:
+                trend = "BAJISTA"
+                details['bearish_factors'].append(f"📉 Bajada moderada ({abs(price_change_pct):.1f}%) + MAs bajistas")
+            else:
+                trend = "LATERAL"
+                details['neutral_factors'].append("Consolidación: sin tendencia clara")
+        
+        # Calcular fuerza
+        base_strength = 50
+        
+        # Bonus por Dow Theory confirmado
+        if dow_trend in ["ALCISTA", "BAJISTA"]:
+            base_strength += 20
+        
+        # Bonus por confirmación de volumen
+        if volume_confirms:
+            base_strength += 10
+        
+        # Bonus por alineación de MAs
+        ma_diff = abs(ma_bullish - ma_bearish)
+        base_strength += min(15, ma_diff * 3)
+        
+        # Factor ADX
+        if not pd.isna(adx):
+            if adx > 25:
+                base_strength += min(15, (adx - 25))
+        
+        strength = min(100, base_strength)
     
-    # Fuerza basada en ADX
-    strength = min(100, adx * 2) if not pd.isna(adx) else 50
+    details['scores'] = {
+        'dow_trend': dow_trend,
+        'volume_confirms': volume_confirms,
+        'ma_bullish': ma_bullish,
+        'ma_bearish': ma_bearish
+    }
+    details['trend'] = trend
+    details['strength'] = round(strength, 1)
     
-    return trend, strength
+    return trend, strength, details
 
 
 def calculate_overall_signal(
@@ -523,7 +880,10 @@ def calculate_overall_signal(
 
 
 def generate_summary(result: AnalysisResult) -> str:
-    """Genera un resumen en lenguaje natural del análisis."""
+    """
+    Genera un resumen en lenguaje natural del análisis.
+    Incluye referencias a los principios de Murphy/Dow Theory aplicados.
+    """
     
     signal_emoji = {
         Signal.STRONG_BUY: "🟢🟢",
@@ -533,60 +893,121 @@ def generate_summary(result: AnalysisResult) -> str:
         Signal.STRONG_SELL: "🔴🔴"
     }
     
+    # Obtener detalles de Dow Theory
+    dow_details = result.trend_details.get('dow_theory', {}) if result.trend_details else {}
+    price_change = result.trend_details.get('price_change', {}) if result.trend_details else {}
+    
     summary = f"""
-📊 **ANÁLISIS DE {result.symbol}** ({result.timeframe})
+📊 **ANÁLISIS TÉCNICO DE {result.symbol}** ({result.timeframe})
+_Metodología: Murphy/Dow Theory_
 
-💰 **Precio actual**: {result.current_price:.4f}
+💰 **Precio actual**: ${result.current_price:.2f}
+📉 **Cambio del período**: {price_change.get('total', 0):+.2f}%
 
+## Tendencia (Dow Theory)
 📈 **Tendencia**: {result.trend} (Fuerza: {result.trend_strength:.0f}%)
-
+"""
+    
+    # Añadir detalles de Dow Theory
+    if dow_details.get('pattern'):
+        summary += f"📐 **Patrón**: {dow_details['pattern']}\n"
+    
+    if dow_details.get('higher_highs', 0) > 0 or dow_details.get('lower_highs', 0) > 0:
+        summary += f"   • Higher Highs: {dow_details.get('higher_highs', 0)} | Lower Highs: {dow_details.get('lower_highs', 0)}\n"
+        summary += f"   • Higher Lows: {dow_details.get('higher_lows', 0)} | Lower Lows: {dow_details.get('lower_lows', 0)}\n"
+    
+    # Señal
+    summary += f"""
+## Señal de Trading
 {signal_emoji.get(result.overall_signal, '')} **SEÑAL**: {result.overall_signal.value}
    Confianza: {result.signal_strength:.0f}%
 """
     
     # Añadir patrones detectados
     if result.patterns:
-        summary += "\n🕯️ **Patrones de velas detectados**:\n"
+        summary += "\n## Patrones de Velas Japonesas\n"
         for p in result.patterns:
-            summary += f"   • {p.name}: {p.signal.value} ({p.confidence:.0f}%)\n"
+            summary += f"   🕯️ {p.name}: {p.signal.value} ({p.confidence:.0f}%)\n"
     
     # Soportes y resistencias
-    if result.support_levels:
-        summary += f"\n🛡️ **Soportes**: {', '.join([f'{s:.4f}' for s in result.support_levels])}\n"
-    if result.resistance_levels:
-        summary += f"🎯 **Resistencias**: {', '.join([f'{r:.4f}' for r in result.resistance_levels])}\n"
+    if result.support_levels or result.resistance_levels:
+        summary += "\n## Niveles Clave (Murphy Ch. 4)\n"
+        if result.support_levels:
+            summary += f"🛡️ **Soportes**: {', '.join([f'${s:.2f}' for s in result.support_levels])}\n"
+        if result.resistance_levels:
+            summary += f"🎯 **Resistencias**: {', '.join([f'${r:.2f}' for r in result.resistance_levels])}\n"
     
     return summary
 
 
 def generate_recommendations(result: AnalysisResult) -> List[str]:
-    """Genera recomendaciones basadas en el análisis."""
+    """
+    Genera recomendaciones basadas en el análisis y principios de Murphy.
+    
+    Principios aplicados:
+    1. "La tendencia es tu amiga" - operar a favor de la tendencia
+    2. "El volumen debe confirmar la tendencia"
+    3. "Soportes y resistencias son zonas clave"
+    """
     
     recs = []
     
+    # Obtener detalles de Dow Theory si están disponibles
+    dow_details = result.trend_details.get('dow_theory', {}) if result.trend_details else {}
+    volume_analysis = result.trend_details.get('volume_analysis', {}) if result.trend_details else {}
+    
+    # Recomendación basada en tendencia (Murphy: "The trend is your friend")
+    if result.trend == "ALCISTA":
+        recs.append("📈 **TENDENCIA ALCISTA** - Murphy: 'The trend is your friend' - Buscar entradas en largo.")
+        
+        if dow_details.get('pattern'):
+            recs.append(f"✅ Dow Theory: {dow_details['pattern']}")
+        
+        # El mensaje de volumen ya incluye su propio emoji
+        if volume_analysis.get('message'):
+            recs.append(volume_analysis.get('message'))
+            
+    elif result.trend == "BAJISTA":
+        recs.append("📉 **TENDENCIA BAJISTA** - Murphy: 'Never buy into a falling market' - Evitar compras.")
+        
+        if dow_details.get('pattern'):
+            recs.append(f"❌ Dow Theory: {dow_details['pattern']}")
+        
+        # El mensaje de volumen ya incluye su propio emoji
+        if volume_analysis.get('message'):
+            recs.append(volume_analysis.get('message'))
+    else:
+        recs.append("↔️ **TENDENCIA LATERAL** - Murphy: 'Avoid trading in sideways markets' - Esperar ruptura.")
+    
+    # Señal específica
     if result.overall_signal == Signal.STRONG_BUY:
-        recs.append("✅ Buena oportunidad de COMPRA. Múltiples indicadores alineados al alza.")
+        recs.append("🟢 Buena oportunidad de COMPRA. Múltiples indicadores alineados al alza.")
         if result.support_levels:
-            recs.append(f"📍 Stop Loss sugerido: {result.support_levels[0]:.4f} (primer soporte)")
+            recs.append(f"📍 Stop Loss sugerido: ${result.support_levels[0]:.2f} (primer soporte)")
     
     elif result.overall_signal == Signal.BUY:
-        recs.append("✅ Considerar COMPRA con precaución. Esperar confirmación adicional.")
-        recs.append("⚠️ No invertir más del 1-2% del capital en esta operación.")
+        recs.append("🟢 Considerar COMPRA con precaución. Esperar confirmación adicional.")
+        recs.append("💰 No invertir más del 1-2% del capital en esta operación.")
     
     elif result.overall_signal == Signal.SELL:
-        recs.append("❌ Considerar VENTA o no entrar en nuevas compras.")
+        recs.append("🔴 Considerar VENTA o no entrar en nuevas compras.")
         recs.append("⚠️ Si tienes posición, ajustar stop loss para proteger ganancias.")
     
     elif result.overall_signal == Signal.STRONG_SELL:
-        recs.append("❌ Señal de VENTA fuerte. Evitar compras.")
+        recs.append("🔴🔴 Señal de VENTA fuerte. Evitar compras.")
         recs.append("⚠️ Si tienes posición, considerar cerrar o reducir exposición.")
     
     else:  # NEUTRAL
         recs.append("🟡 Mercado sin dirección clara. ESPERAR mejor momento.")
-        recs.append("⚠️ No operar en mercados laterales sin experiencia.")
+    
+    # Soportes y resistencias (Murphy Chapter 4)
+    if result.support_levels:
+        recs.append(f"🛡️ **Soportes clave**: {', '.join([f'${s:.2f}' for s in result.support_levels[:2]])}")
+    if result.resistance_levels:
+        recs.append(f"🎯 **Resistencias clave**: {', '.join([f'${r:.2f}' for r in result.resistance_levels[:2]])}")
     
     # Advertencia general
-    recs.append("⚠️ RECUERDA: Esto es solo análisis técnico, no garantiza resultados. Gestiona tu riesgo.")
+    recs.append("⚠️ **GESTIÓN DE RIESGO**: Nunca arriesgar más del 2% por operación. El análisis técnico es probabilístico.")
     
     return recs
 
@@ -603,6 +1024,22 @@ def full_analysis(df: pd.DataFrame, symbol: str, timeframe: str = "1d") -> Analy
     Returns:
         AnalysisResult con todo el análisis
     """
+    # Normalizar columnas a minúsculas (soporta tanto Yahoo Finance como Binance)
+    df = df.copy()
+    df.columns = [col.lower() if isinstance(col, str) else col for col in df.columns]
+    
+    # Asegurar que tenemos las columnas necesarias
+    required_cols = ['open', 'high', 'low', 'close', 'volume']
+    for col in required_cols:
+        if col not in df.columns:
+            raise ValueError(f"DataFrame debe contener columna '{col}'")
+    
+    # Eliminar filas con NaN en columnas críticas
+    df = df.dropna(subset=['open', 'high', 'low', 'close'])
+    
+    if len(df) < 50:
+        raise ValueError(f"Datos insuficientes: {len(df)} filas (mínimo 50)")
+    
     # Calcular indicadores
     df = calculate_indicators(df)
     
@@ -616,7 +1053,7 @@ def full_analysis(df: pd.DataFrame, symbol: str, timeframe: str = "1d") -> Analy
     supports, resistances = find_support_resistance(df)
     
     # Determinar tendencia
-    trend, trend_strength = determine_trend(df)
+    trend, trend_strength, trend_details = determine_trend(df)
     
     # Calcular señal general
     overall_signal, signal_strength = calculate_overall_signal(indicators, patterns)
@@ -635,7 +1072,8 @@ def full_analysis(df: pd.DataFrame, symbol: str, timeframe: str = "1d") -> Analy
         overall_signal=overall_signal,
         signal_strength=signal_strength,
         summary="",
-        recommendations=[]
+        recommendations=[],
+        trend_details=trend_details
     )
     
     # Generar resumen y recomendaciones

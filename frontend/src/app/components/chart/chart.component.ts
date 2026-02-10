@@ -16,7 +16,7 @@ import {
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { TradingService } from '../../services/trading.service';
-import { PatternResult } from '../../models/trading.models';
+import { PatternResult, TrendDetails } from '../../models/trading.models';
 import { createChart, IChartApi, ISeriesApi, CandlestickData, Time, SeriesMarker } from 'lightweight-charts';
 
 @Component({
@@ -24,8 +24,8 @@ import { createChart, IChartApi, ISeriesApi, CandlestickData, Time, SeriesMarker
   standalone: true,
   imports: [DecimalPipe],
   template: `
-    <div class="trading-card h-full flex flex-col">
-      <div class="flex items-center justify-between mb-1">
+    <div class="trading-card h-full flex flex-col overflow-hidden">
+      <div class="flex items-center justify-between mb-1 flex-shrink-0">
         <h2 class="text-xs font-semibold">📈 {{ tradingService.currentSymbol() }}</h2>
         <div class="flex items-center gap-2 text-xs">
           @if (selectedIndicatorInfo()) {
@@ -43,11 +43,11 @@ import { createChart, IChartApi, ISeriesApi, CandlestickData, Time, SeriesMarker
         </div>
       </div>
       
-      <div #chartContainer class="flex-1 w-full rounded overflow-hidden" style="min-height: 300px;"></div>
+      <div #chartContainer class="flex-1 w-full rounded overflow-hidden"></div>
       
       <!-- Leyenda de patrones detectados -->
       @if (patterns().length) {
-        <div class="mt-1 flex flex-wrap gap-1">
+        <div class="mt-1 flex flex-wrap gap-1 flex-shrink-0">
           @for (p of patterns().slice(0, 3); track p.name) {
             <span 
               class="px-1.5 py-0.5 rounded text-xs"
@@ -74,13 +74,21 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
   
   readonly highlightedLevel = input<{ type: string; price: number } | null>(null);
   readonly patterns = input<PatternResult[]>([]);
+  readonly showTrendLines = input<TrendDetails | null>(null);
   
   private chart: IChartApi | null = null;
   private candleSeries: ISeriesApi<'Candlestick'> | null = null;
   private volumeSeries: ISeriesApi<'Histogram'> | null = null;
   private priceLine: any = null;
   private indicatorLine: any = null;
+  private currentPriceLine: any = null;
   private markers: SeriesMarker<Time>[] = [];
+  private resizeObserver: ResizeObserver | null = null;
+  
+  // Líneas de SMAs para tendencia
+  private sma20Line: any = null;
+  private sma50Line: any = null;
+  private sma200Line: any = null;
   
   // Signal para indicar que el chart está inicializado
   private chartReady = signal(false);
@@ -140,6 +148,27 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
         this.updateIndicatorLine(info);
       }
     });
+    
+    // Efecto para mostrar línea de precio actual (prioriza precio en tiempo real)
+    effect(() => {
+      const ready = this.chartReady();
+      const realtimePrice = this.tradingService.realtimePrice();
+      const analysis = this.tradingService.analysis.value();
+      const price = realtimePrice || analysis?.current_price;
+      
+      if (ready && this.chart && this.candleSeries && price) {
+        this.updateCurrentPriceLine(price);
+      }
+    });
+    
+    // Efecto para mostrar/ocultar líneas de SMAs al hacer hover en tendencia
+    effect(() => {
+      const ready = this.chartReady();
+      const trendDetails = this.showTrendLines();
+      if (ready && this.chart && this.candleSeries) {
+        this.updateTrendLines(trendDetails);
+      }
+    });
   }
   
   ngAfterViewInit(): void {
@@ -152,6 +181,9 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
   }
   
   ngOnDestroy(): void {
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+    }
     if (this.chart) {
       this.chart.remove();
     }
@@ -164,58 +196,75 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
     return '🟡';
   }
   
-  // Obtener emoji representativo de la forma del patrón
-  private getPatternShape(patternName: string): string {
-    const name = patternName.toLowerCase();
-    
-    // Patrones con formas distintivas
-    if (name.includes('martillo') && !name.includes('invertido')) return '🔨';
-    if (name.includes('martillo invertido')) return '⚒️';
-    if (name.includes('estrella fugaz') || name.includes('shooting')) return '💫';
-    if (name.includes('estrella') && name.includes('mañana') || name.includes('morning')) return '🌅';
-    if (name.includes('estrella') && name.includes('tarde') || name.includes('evening')) return '🌆';
-    if (name.includes('doji')) return '✚';
-    if (name.includes('envolvente')) return '🔄';
-    if (name.includes('hombre colgado') || name.includes('hanging')) return '🪢';
-    if (name.includes('tres soldados') || name.includes('three white')) return '📈📈';
-    if (name.includes('tres cuervos') || name.includes('three black')) return '📉📉';
-    if (name.includes('harami')) return '🤰';
-    if (name.includes('piercing') || name.includes('penetrante')) return '🗡️';
-    if (name.includes('nube oscura') || name.includes('dark cloud')) return '🌧️';
-    if (name.includes('pinza') || name.includes('tweezer')) return '🔧';
-    
-    return '📊';
-  }
-  
   private updatePatternMarkers(patterns: PatternResult[]): void {
     if (!this.candleSeries) return;
     
     const chartData = this.tradingService.chartData.value();
     if (!chartData?.candles?.length) return;
     
-    // Crear marcadores para cada patrón (máximo 5)
+    const totalCandles = chartData.candles.length;
     const tempMarkers: SeriesMarker<Time>[] = [];
     
-    patterns.slice(0, 5).forEach((p, i) => {
+    // Máximo 6 patrones para no saturar el gráfico
+    const patternsToShow = patterns.slice(0, 6);
+    
+    patternsToShow.forEach((p, i) => {
       const isBullish = p.signal?.includes('COMPRA');
-      // Distribuir patrones en las últimas velas
-      const candleIndex = Math.max(0, chartData.candles.length - 1 - i * 2);
+      const isNeutral = p.signal?.includes('NEUTRAL') || p.name.toUpperCase().includes('DOJI');
+      
+      // Distribuir patrones en diferentes velas para que no se solapen
+      // Usar diferentes zonas del gráfico basadas en el tipo de patrón
+      let candleOffset: number;
+      
+      // Los patrones alcistas van en la parte derecha (más reciente)
+      // Los bajistas en la parte central-derecha
+      // Los neutrales en el medio
+      if (isBullish) {
+        candleOffset = i * 4; // 0, 4, 8, 12...
+      } else if (isNeutral) {
+        candleOffset = 2 + i * 5; // 2, 7, 12...
+      } else {
+        candleOffset = 1 + i * 4; // 1, 5, 9, 13...
+      }
+      
+      const candleIndex = Math.max(0, totalCandles - 1 - candleOffset);
       const candle = chartData.candles[candleIndex];
       
-      // Nombre corto pero con emoji de la forma
-      const patternEmoji = this.getPatternShape(p.name);
-      const shortName = p.name.length > 12 ? p.name.substring(0, 10) + '..' : p.name;
+      if (!candle) return;
+      
+      // Emoji descriptivo del tipo de patrón
+      const patternEmoji = this.getPatternTypeEmoji(p.name);
+      const shortName = this.getShortPatternName(p.name);
+      
+      // Determinar color y forma según tipo
+      let color: string;
+      let shape: 'arrowUp' | 'arrowDown' | 'circle';
+      let position: 'belowBar' | 'aboveBar';
+      
+      if (isBullish) {
+        color = '#22c55e'; // Verde
+        shape = 'arrowUp';
+        position = 'belowBar';
+      } else if (isNeutral) {
+        color = '#fbbf24'; // Amarillo
+        shape = 'circle';
+        position = 'aboveBar';
+      } else {
+        color = '#ef4444'; // Rojo
+        shape = 'arrowDown';
+        position = 'aboveBar';
+      }
       
       tempMarkers.push({
         time: this.parseDate(candle.date) as Time,
-        position: isBullish ? 'belowBar' : 'aboveBar',
-        color: isBullish ? '#22c55e' : '#ef4444',
-        shape: isBullish ? 'arrowUp' : 'arrowDown',
+        position,
+        color,
+        shape,
         text: `${patternEmoji} ${shortName}`,
       } as SeriesMarker<Time>);
     });
     
-    // IMPORTANTE: Los marcadores DEBEN estar ordenados por tiempo ascendente
+    // Ordenar por tiempo ascendente (requerido por lightweight-charts)
     this.markers = tempMarkers.sort((a, b) => {
       const timeA = typeof a.time === 'number' ? a.time : new Date(a.time as string).getTime() / 1000;
       const timeB = typeof b.time === 'number' ? b.time : new Date(b.time as string).getTime() / 1000;
@@ -223,6 +272,43 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
     });
     
     this.candleSeries.setMarkers(this.markers);
+  }
+  
+  private getPatternTypeEmoji(name: string): string {
+    const upper = name.toUpperCase();
+    if (upper.includes('MARTILLO') || upper.includes('HAMMER')) return '🔨';
+    if (upper.includes('ESTRELLA') || upper.includes('STAR')) return '⭐';
+    if (upper.includes('ENVOLVENTE') || upper.includes('ENGULFING')) return '🌀';
+    if (upper.includes('HARAMI')) return '🤰';
+    if (upper.includes('DOJI')) return '➕';
+    if (upper.includes('SOLDADO') || upper.includes('SOLDIER')) return '🦸';
+    if (upper.includes('CUERVO') || upper.includes('CROW')) return '🦢';
+    if (upper.includes('NUBE') || upper.includes('CLOUD')) return '☁️';
+    if (upper.includes('PENETRANTE') || upper.includes('PIERCING')) return '🗡️';
+    if (upper.includes('PINZA') || upper.includes('TWEEZER')) return '🧲';
+    if (upper.includes('MARUBOZU')) return '🟩';
+    return '🕯️';
+  }
+  
+  private getShortPatternName(name: string): string {
+    // Abreviar nombres largos
+    const upper = name.toUpperCase();
+    if (upper.includes('MARTILLO INVERTIDO') || upper.includes('INVERTED')) return 'M.Inv';
+    if (upper.includes('MARTILLO') || upper.includes('HAMMER')) return 'Mart';
+    if (upper.includes('TRES SOLDADOS') || upper.includes('THREE WHITE')) return '3Sol';
+    if (upper.includes('TRES CUERVOS') || upper.includes('THREE BLACK')) return '3Cue';
+    if (upper.includes('ESTRELLA MAÑANA') || upper.includes('MORNING')) return 'E.Mañ';
+    if (upper.includes('ESTRELLA TARDE') || upper.includes('EVENING')) return 'E.Tar';
+    if (upper.includes('ENVOLVENTE')) return 'Envol';
+    if (upper.includes('ENGULFING')) return 'Engul';
+    if (upper.includes('HARAMI')) return 'Haram';
+    if (upper.includes('DOJI')) return 'Doji';
+    if (upper.includes('MARUBOZU')) return 'Marub';
+    if (upper.includes('NUBE OSCURA') || upper.includes('DARK CLOUD')) return 'Nube';
+    if (upper.includes('PENETRANTE') || upper.includes('PIERCING')) return 'Penet';
+    
+    // Nombre genérico corto
+    return name.length > 8 ? name.substring(0, 6) + '..' : name;
   }
   
   private updateHighlightedLine(level: { type: string; price: number } | null): void {
@@ -285,6 +371,81 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
         lineStyle: 3, // Dotted
         axisLabelVisible: true,
         title: info.name,
+      });
+    }
+  }
+  
+  private updateCurrentPriceLine(price: number): void {
+    // Remover línea anterior si existe
+    if (this.currentPriceLine && this.candleSeries) {
+      this.candleSeries.removePriceLine(this.currentPriceLine);
+      this.currentPriceLine = null;
+    }
+    
+    if (!price || !this.candleSeries) return;
+    
+    // Crear línea de precio actual
+    this.currentPriceLine = this.candleSeries.createPriceLine({
+      price: price,
+      color: '#fbbf24', // Amarillo/dorado
+      lineWidth: 1,
+      lineStyle: 0, // Solid
+      axisLabelVisible: true,
+      title: '💰 Actual',
+    });
+  }
+  
+  private updateTrendLines(trendDetails: TrendDetails | null): void {
+    // Siempre remover líneas anteriores
+    if (this.sma20Line && this.candleSeries) {
+      this.candleSeries.removePriceLine(this.sma20Line);
+      this.sma20Line = null;
+    }
+    if (this.sma50Line && this.candleSeries) {
+      this.candleSeries.removePriceLine(this.sma50Line);
+      this.sma50Line = null;
+    }
+    if (this.sma200Line && this.candleSeries) {
+      this.candleSeries.removePriceLine(this.sma200Line);
+      this.sma200Line = null;
+    }
+    
+    // Si no hay detalles, no mostrar nada
+    if (!trendDetails || !this.candleSeries) return;
+    
+    const sma = trendDetails.sma_values;
+    
+    // Crear líneas de SMAs con colores distintivos
+    if (sma.sma_20) {
+      this.sma20Line = this.candleSeries.createPriceLine({
+        price: sma.sma_20,
+        color: '#f97316', // Naranja - SMA rápida
+        lineWidth: 2,
+        lineStyle: 2, // Dashed
+        axisLabelVisible: true,
+        title: '⚡ SMA 20',
+      });
+    }
+    
+    if (sma.sma_50) {
+      this.sma50Line = this.candleSeries.createPriceLine({
+        price: sma.sma_50,
+        color: '#8b5cf6', // Púrpura - SMA media
+        lineWidth: 2,
+        lineStyle: 2, // Dashed
+        axisLabelVisible: true,
+        title: '📊 SMA 50',
+      });
+    }
+    
+    if (sma.sma_200) {
+      this.sma200Line = this.candleSeries.createPriceLine({
+        price: sma.sma_200,
+        color: '#ec4899', // Rosa - SMA lenta
+        lineWidth: 2,
+        lineStyle: 2, // Dashed
+        axisLabelVisible: true,
+        title: '🏛️ SMA 200',
       });
     }
   }
@@ -393,15 +554,17 @@ export class ChartComponent implements AfterViewInit, OnDestroy {
     // Ajustar tamaño
     this.chart.timeScale().fitContent();
     
-    // Responsive
-    const resizeObserver = new ResizeObserver(entries => {
+    // Responsive - observar cambios de tamaño
+    this.resizeObserver = new ResizeObserver(entries => {
       if (entries.length > 0 && this.chart) {
         const { width, height } = entries[0].contentRect;
-        this.chart.applyOptions({ width, height: height || 400 });
+        if (width > 0 && height > 0) {
+          this.chart.applyOptions({ width, height });
+        }
       }
     });
     
-    resizeObserver.observe(this.chartContainer.nativeElement);
+    this.resizeObserver.observe(this.chartContainer.nativeElement);
   }
   
   private updateChartData(candles: any[]): void {

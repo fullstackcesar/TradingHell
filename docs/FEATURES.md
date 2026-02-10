@@ -2,13 +2,40 @@
 
 ## 📋 Estado del Proyecto
 
-**Última actualización:** 8 de Febrero, 2026 (noche)  
+**Última actualización:** 10 de Febrero, 2026  
 **Stack:** Angular 21 (Zoneless) + FastAPI + Binance API + TailwindCSS  
 **Repositorio:** https://github.com/fullstackcesar/TradingHell
 
 ---
 
 ## ✅ Funcionalidades Implementadas
+
+### 📚 Centro de Aprendizaje (Learning)
+- **Base de conocimiento** completa sobre trading técnico
+- **Categorías organizadas:** Murphy, Patrones, Indicadores, Gestión de Riesgo
+- **Galería Visual de Patrones** con filtros (Todos/Alcistas/Bajistas/Neutrales)
+- **22+ SVGs de patrones de velas** con colores por tipo de señal
+- **Artículos educativos** con SVGs inline junto a las explicaciones:
+  - Guía Completa de Patrones de Velas Japonesas
+  - Resumen Visual de Patrones
+  - Filosofía del Análisis Técnico (Murphy)
+  - Indicadores Técnicos
+
+#### SVGs de Patrones Incluidos
+| Alcistas | Bajistas | Neutrales |
+|----------|----------|-----------|
+| Martillo | Estrella Fugaz | Doji |
+| Martillo Invertido | Hombre Colgado | Doji Piernas Largas |
+| Doji Libélula | Doji Lápida | Spinning Top |
+| Marubozu Alcista | Marubozu Bajista | |
+| Envolvente Alcista | Envolvente Bajista | |
+| Harami Alcista | Harami Bajista | |
+| Patrón Penetrante | Nube Oscura | |
+| Pinzas de Suelo | Pinzas de Techo | |
+| Estrella de la Mañana | Estrella de la Tarde | |
+| Tres Soldados Blancos | Tres Cuervos Negros | |
+
+---
 
 ### ⏱️ Intervalos de Tiempo (16 opciones)
 | Minutos | Horas | Días+ |
@@ -98,6 +125,13 @@ Categorías disponibles:
 - Base de conocimiento sobre trading
 - Colapsable para no ocupar espacio
 
+### 🎯 Marcadores de Patrones en Gráfico
+- **Detección automática** de patrones de velas japonesas
+- **Marcadores visuales** bajo cada vela con patrón detectado
+- **Tooltips** con SVG del patrón y descripción
+- **Colores** verde/rojo/gris según señal alcista/bajista/neutral
+- **Distribución uniforme** de marcadores para no saturar el gráfico
+
 ### ⚡ Tiempo Real
 - Botón **"EN VIVO"** para auto-refresh cada 500ms
 - Punto verde pulsante cuando está activo
@@ -135,29 +169,19 @@ POST /api/ask                        - Chat con RAG
 
 ---
 
-## 🚀 Mejoras Pendientes / Ideas
+## 🚀 Mejoras Recientes (Feb 2026)
 
-### Alta Prioridad
-- [x] ~~**Gráfico no se ve a veces**~~ ✅ Arreglado con filtro duplicados
-- [x] ~~**Más intervalos de tiempo**~~ ✅ 16 intervalos disponibles
-- [x] ~~**Más indicadores individuales**~~ ✅ 12 indicadores
-- [ ] **Alertas por precio** - Notificaciones cuando llegue a X
-- [ ] **Histórico de posiciones** - Guardar en localStorage
-- [ ] **PnL acumulado** - Mostrar ganancias/pérdidas totales
+- [x] **Centro de Aprendizaje** - Base de conocimiento completa
+- [x] **Galería Visual de Patrones** - 22+ SVGs con filtros
+- [x] **SVGs inline en artículos** - Visuales junto a explicaciones
+- [x] **Normalización de patrones** - Soporte español/inglés, tildes
+- [x] **Marcadores en gráfico** - Patrones detectados con tooltips
 
-### Media Prioridad
-- [ ] **Series de indicadores** - Mostrar SMA/EMA como línea continua (no solo punto)
-- [ ] **Panel de osciladores** - Subgráfico para RSI, MACD, etc.
-- [ ] **Multi-timeframe** - Ver varios timeframes simultáneamente
-- [ ] **Drawing tools** - Líneas de tendencia, rectángulos
-- [ ] **Comparación de activos** - Overlay de múltiples símbolos
-- [ ] **Screener** - Buscar activos por criterios
+---
 
-### Baja Prioridad
-- [ ] **Temas** - Light/Dark mode
-- [ ] **PWA** - App instalable
-- [ ] **Precio en vivo WebSocket** - Binance WS para cripto
-- [ ] **Backtesting simple** - Probar estrategias históricas
+## 📋 Pendiente
+
+Ver [ROADMAP.md](ROADMAP.md) para la lista completa de mejoras planificadas.
 
 ---
 
@@ -167,11 +191,14 @@ POST /api/ask                        - Chat con RAG
 frontend/src/app/
 ├── components/
 │   ├── action-panel/          # Panel de acción con semáforo
-│   ├── analysis/              # Análisis técnico con tooltips
-│   ├── chart/                 # Gráfico TradingView
+│   ├── analysis/              # Análisis técnico con tooltips y SVGs
+│   ├── chart/                 # Gráfico TradingView con marcadores
 │   ├── chat/                  # Chat con IA
+│   ├── learning/              # Centro de aprendizaje y galería
 │   ├── market-explorer/       # Explorador de mercados
 │   └── position-tracker/      # Seguimiento de posiciones
+├── constants/
+│   └── pattern-svgs.ts        # SVGs de patrones de velas (22+)
 ├── pages/
 │   └── dashboard/             # Layout principal
 ├── services/
@@ -186,7 +213,11 @@ backend/
 │   ├── binance_provider.py    # API Binance
 │   └── providers.py           # Abstracción de datos
 └── rag/
-    └── rag_engine.py          # Motor RAG para chat
+    ├── rag_engine.py          # Motor RAG para chat
+    └── knowledge_base/        # Artículos de conocimiento
+        ├── murphy_technical_analysis.md
+        ├── patrones_velas_completo.md
+        └── indicadores_tecnicos.md
 ```
 
 ---

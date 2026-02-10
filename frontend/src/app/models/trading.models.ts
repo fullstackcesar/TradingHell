@@ -31,12 +31,35 @@ export interface PatternResult {
   description: string;
 }
 
+export interface TrendDetails {
+  bullish_factors: string[];
+  bearish_factors: string[];
+  neutral_factors: string[];
+  sma_values: {
+    sma_20?: number;
+    sma_50?: number;
+    sma_200?: number;
+  };
+  price_change: {
+    total: number;
+    start_price: number;
+    end_price: number;
+  };
+  scores: {
+    bullish: number;
+    bearish: number;
+  };
+  trend: string;
+  strength: number;
+}
+
 export interface AnalysisResponse {
   symbol: string;
   timeframe: string;
   current_price: number;
   trend: string;
   trend_strength: number;
+  trend_details?: TrendDetails;
   indicators: IndicatorResult[];
   patterns: PatternResult[];
   support_levels: number[];
