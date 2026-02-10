@@ -45,3 +45,6 @@ htmlcov/
 # Misc
 *.log
 .cache/
+
+# PDFs de referencia (local only)
+pdfs/
