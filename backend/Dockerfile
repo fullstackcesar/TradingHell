@@ -3,9 +3,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Instalar dependencias del sistema
+# Instalar dependencias del sistema (gcc para compilar, curl para healthcheck, libpq para PostgreSQL)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    curl \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar requirements primero (para cache de Docker)

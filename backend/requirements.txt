@@ -19,6 +19,11 @@ pandas-ta>=0.4.71b0
 # OpenAI para el chat
 openai>=1.50.0
 
+# Database (PostgreSQL)
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9
+alembic>=1.13.0
+
 # Utilities
 python-dotenv>=1.0.0
 pydantic>=2.6.0

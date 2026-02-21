@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # ============== PostgreSQL ==============
+  postgres:
+    image: postgres:16-alpine
+    container_name: tradinghell-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tradinghell}
+      POSTGRES_USER: ${POSTGRES_USER:-tradinghell}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tradinghell_secret}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tradinghell}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tradinghell-network
+
+  # ============== Backend (FastAPI) ==============
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tradinghell-backend
+    restart: unless-stopped
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-tradinghell}:${POSTGRES_PASSWORD:-tradinghell_secret}@postgres:5432/${POSTGRES_DB:-tradinghell}
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - tradinghell-network
+
+  # ============== Frontend (Angular + Nginx) ==============
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: tradinghell-frontend
+    restart: unless-stopped
+    environment:
+      - API_URL=${API_URL:-http://backend:8000}
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - tradinghell-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  tradinghell-network:
+    driver: bridge
